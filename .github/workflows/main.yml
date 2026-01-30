@@ -28,7 +28,7 @@ jobs:
         pyinstaller --onefile --windowed --name=PeakAimAssistant peak_aim_assistant.py
     
     - name: Upload EXE
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: PeakAimAssistant-EXE
         path: dist/PeakAimAssistant.exe
