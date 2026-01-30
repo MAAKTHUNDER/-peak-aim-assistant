@@ -4,7 +4,7 @@ pynput>=1.7.6
 pywin32>=305
 ```
 
-### `.gitignore`
+## 3. `.gitignore`
 ```
 # Python
 __pycache__/
@@ -27,6 +27,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # PyInstaller
 *.manifest
@@ -46,3 +47,7 @@ settings.ini
 # OS
 .DS_Store
 Thumbs.db
+
+# Distribution
+dist/
+build/
