@@ -28,10 +28,14 @@ jobs:
     
     - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name=PeakAimAssistant peak_aim_assistant.py
+        if (Test-Path "icon.ico") {
+          pyinstaller --onefile --windowed --icon=icon.ico --name=PeakAimAssistant peak_aim_assistant.py
+        } else {
+          pyinstaller --onefile --windowed --name=PeakAimAssistant peak_aim_assistant.py
+        }
     
     - name: Upload EXE artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: PeakAimAssistant-Windows
         path: dist/PeakAimAssistant.exe
