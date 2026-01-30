@@ -58,22 +58,19 @@ class MacroThread(QThread):
         self.right_click_time = 0
         self.running = True
         self.right_click_pressed = False
+        self.gameloop_only = True  # Toggle for GameLoop-only mode
         
     def is_gameloop_active(self):
         """Check if GameLoop window is active"""
+        if not self.gameloop_only:
+            return True  # If disabled, always return True (work everywhere)
+            
         try:
             user32 = ctypes.windll.user32
             hwnd = user32.GetForegroundWindow()
             
             if hwnd == 0:
                 return False
-            
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length == 0:
-                return False
-                
-            buff = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buff, length + 1)
             
             # Get process name
             MAX_PATH = 260
@@ -102,15 +99,11 @@ class MacroThread(QThread):
             
             return False
         except Exception as e:
-            print(f"Error checking GameLoop: {e}")
-            return False
+            # If detection fails, allow it to work (fail-safe)
+            return True
     
     def run(self):
         def on_click(x, y, button, pressed):
-            # Only process right-click when GameLoop is active
-            if not self.is_gameloop_active():
-                return
-                
             if button == Button.right:
                 if pressed:
                     self.right_click_time = time.time()
@@ -127,7 +120,7 @@ class MacroThread(QThread):
         
         while self.running:
             try:
-                # Only work if GameLoop is active
+                # Check if GameLoop is active (or if check is disabled)
                 gameloop_active = self.is_gameloop_active()
                 
                 if not gameloop_active:
@@ -186,6 +179,7 @@ class MainWindow(QMainWindow):
         self.load_settings()
         
         self.macro_thread = MacroThread()
+        self.macro_thread.gameloop_only = self.gameloop_only
         self.macro_thread.status_update.connect(self.update_overlay_status)
         self.macro_thread.start()
         
@@ -219,18 +213,21 @@ class MainWindow(QMainWindow):
                     self.overlay_y = settings.get('overlay_y', 50)
                     self.overlay_bg = settings.get('overlay_bg', True)
                     self.start_minimized = settings.get('start_minimized', False)
+                    self.gameloop_only = settings.get('gameloop_only', True)
                     self.is_first_run = False
             else:
                 self.overlay_x = 1600
                 self.overlay_y = 50
                 self.overlay_bg = True
                 self.start_minimized = False
+                self.gameloop_only = True
                 self.is_first_run = True
         except:
             self.overlay_x = 1600
             self.overlay_y = 50
             self.overlay_bg = True
             self.start_minimized = False
+            self.gameloop_only = True
             self.is_first_run = True
     
     def save_settings(self):
@@ -238,14 +235,15 @@ class MainWindow(QMainWindow):
             'overlay_x': self.overlay_x,
             'overlay_y': self.overlay_y,
             'overlay_bg': self.overlay_bg,
-            'start_minimized': self.start_minimized
+            'start_minimized': self.start_minimized,
+            'gameloop_only': self.gameloop_only
         }
         with open(self.settings_file, 'w') as f:
             json.dump(settings, f)
     
     def init_ui(self):
         self.setWindowTitle("Peak & Aim Assistant v1.0")
-        self.setFixedSize(400, 595)
+        self.setFixedSize(400, 620)
         
         palette = QPalette()
         palette.setColor(QPalette.Window, QColor(30, 30, 30))
@@ -326,8 +324,14 @@ class MainWindow(QMainWindow):
         self.minimize_check.stateChanged.connect(self.toggle_minimize)
         layout.addWidget(self.minimize_check)
         
-        tip_label = QLabel("Tip: Only works when GameLoop is active")
-        tip_label.setStyleSheet("color: #888888; font-size: 8pt;")
+        self.gameloop_check = QCheckBox("GameLoop Only Mode")
+        self.gameloop_check.setStyleSheet("color: white;")
+        self.gameloop_check.setChecked(self.gameloop_only)
+        self.gameloop_check.stateChanged.connect(self.toggle_gameloop_only)
+        layout.addWidget(self.gameloop_check)
+        
+        tip_label = QLabel("Tip: Uncheck 'GameLoop Only' if macro doesn't work")
+        tip_label.setStyleSheet("color: #FF8800; font-size: 8pt;")
         layout.addWidget(tip_label)
         
         features_label = QLabel("Features:")
@@ -336,8 +340,8 @@ class MainWindow(QMainWindow):
         
         features = [
             "☑ Peak & Aim (Q/E → O)",
-            "☑ Scope Detection (Right-Click)",
-            "☑ GameLoop-Only Mode",
+            "☑ Fast Scope Detection (500ms)",
+            "☑ Optional GameLoop-Only Mode",
             "☑ Auto-Recovery & Watchdog"
         ]
         for feature in features:
@@ -446,6 +450,14 @@ class MainWindow(QMainWindow):
     def toggle_minimize(self):
         self.start_minimized = self.minimize_check.isChecked()
         self.save_settings()
+    
+    def toggle_gameloop_only(self):
+        self.gameloop_only = self.gameloop_check.isChecked()
+        self.macro_thread.gameloop_only = self.gameloop_only
+        self.save_settings()
+        
+        mode = "GameLoop only" if self.gameloop_only else "All applications"
+        QMessageBox.information(self, "Mode Changed", f"Now working in: {mode}")
     
     def show_settings(self):
         QMessageBox.information(self, "Settings", "Advanced settings coming soon!\n\n• Custom key bindings\n• Multiple profiles\n• Theme customization")
