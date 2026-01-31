@@ -26,13 +26,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
-    - name: Build EXE
+    - name: Build EXE with Icon
       run: |
-        if (Test-Path "icon.ico") {
-          pyinstaller --onefile --windowed --icon=icon.ico --name=PeakAimAssistant peak_aim_assistant.py
-        } else {
-          pyinstaller --onefile --windowed --name=PeakAimAssistant peak_aim_assistant.py
-        }
+        pyinstaller --onefile --windowed --icon=icon.ico --name=PeakAimAssistant peak_aim_assistant.py
     
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
