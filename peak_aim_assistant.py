@@ -2,7 +2,6 @@ import sys
 import json
 import os
 import time
-import ctypes
 import webbrowser
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QLineEdit, 
@@ -11,6 +10,14 @@ from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QFont, QPalette, QColor, QPixmap, QCursor
 import keyboard
 from pynput.mouse import Button, Listener as MouseListener
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class OverlayWindow(QWidget):
     def __init__(self):
@@ -59,53 +66,9 @@ class MacroThread(QThread):
         self.right_click_time = 0
         self.running = True
         self.right_click_pressed = False
-        
-    def is_gameloop_active(self):
-        """Check if GameLoop window is currently focused/active"""
-        try:
-            user32 = ctypes.windll.user32
-            kernel32 = ctypes.windll.kernel32
-            psapi = ctypes.windll.psapi
-            
-            hwnd = user32.GetForegroundWindow()
-            
-            if hwnd == 0:
-                return False
-            
-            process_id = ctypes.c_ulong()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
-            
-            PROCESS_QUERY_INFORMATION = 0x0400
-            PROCESS_VM_READ = 0x0010
-            hProcess = kernel32.OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 
-                False, 
-                process_id.value
-            )
-            
-            if not hProcess:
-                return False
-            
-            MAX_PATH = 260
-            process_name = ctypes.create_unicode_buffer(MAX_PATH)
-            psapi.GetModuleBaseNameW(hProcess, None, process_name, MAX_PATH)
-            kernel32.CloseHandle(hProcess)
-            
-            exe_name = process_name.value.lower()
-            
-            gameloop_exes = ['androidemulator.exe', 'androidemulatoren.exe', 'androidemulatorex.exe']
-            
-            return exe_name in gameloop_exes
-            
-        except Exception as e:
-            print(f"GameLoop detection error: {e}")
-            return False
     
     def run(self):
         def on_click(x, y, button, pressed):
-            if not self.is_gameloop_active():
-                return
-                
             if button == Button.right:
                 if pressed:
                     self.right_click_time = time.time()
@@ -121,16 +84,6 @@ class MacroThread(QThread):
         
         while self.running:
             try:
-                gameloop_active = self.is_gameloop_active()
-                
-                if not gameloop_active:
-                    if self.o_held:
-                        keyboard.release('o')
-                        self.o_held = False
-                    self.status_update.emit(self.enabled, self.scope_toggled)
-                    time.sleep(0.05)
-                    continue
-                
                 if self.enabled:
                     e_pressed = keyboard.is_pressed('e')
                     q_pressed = keyboard.is_pressed('q')
@@ -206,8 +159,9 @@ class MainWindow(QMainWindow):
         
     def set_window_icon(self):
         """Set window icon"""
-        if os.path.exists("icon.ico"):
-            icon = QIcon("icon.ico")
+        icon_path = resource_path("icon.ico")
+        if os.path.exists(icon_path):
+            icon = QIcon(icon_path)
             self.setWindowIcon(icon)
         else:
             pixmap = QPixmap(32, 32)
@@ -264,9 +218,10 @@ class MainWindow(QMainWindow):
         # Title section with logo
         title_layout = QHBoxLayout()
         
-        if os.path.exists("logo.png"):
+        logo_path = resource_path("logo.png")
+        if os.path.exists(logo_path):
             logo_label = QLabel()
-            logo_pixmap = QPixmap("logo.png")
+            logo_pixmap = QPixmap(logo_path)
             logo_label.setPixmap(logo_pixmap.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             title_layout.addWidget(logo_label)
         
@@ -351,8 +306,8 @@ class MainWindow(QMainWindow):
         self.minimize_check.stateChanged.connect(self.toggle_minimize)
         layout.addWidget(self.minimize_check)
         
-        tip_label = QLabel("Tip: Only works when GameLoop is active")
-        tip_label.setStyleSheet("color: #FF8800; font-size: 8pt;")
+        tip_label = QLabel("Tip: Works everywhere, optimized for GameLoop")
+        tip_label.setStyleSheet("color: #00FF00; font-size: 8pt;")
         layout.addWidget(tip_label)
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
@@ -376,9 +331,10 @@ class MainWindow(QMainWindow):
         youtube_layout = QHBoxLayout()
         youtube_layout.setSpacing(8)
         
-        if os.path.exists("youtube.png"):
+        yt_icon_path = resource_path("youtube.png")
+        if os.path.exists(yt_icon_path):
             yt_icon = QLabel()
-            yt_pixmap = QPixmap("youtube.png")
+            yt_pixmap = QPixmap(yt_icon_path)
             yt_icon.setPixmap(yt_pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             youtube_layout.addWidget(yt_icon)
         
@@ -391,9 +347,10 @@ class MainWindow(QMainWindow):
         tiktok_layout = QHBoxLayout()
         tiktok_layout.setSpacing(8)
         
-        if os.path.exists("tiktok.png"):
+        tt_icon_path = resource_path("tiktok.png")
+        if os.path.exists(tt_icon_path):
             tt_icon = QLabel()
-            tt_pixmap = QPixmap("tiktok.png")
+            tt_pixmap = QPixmap(tt_icon_path)
             tt_icon.setPixmap(tt_pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             tiktok_layout.addWidget(tt_icon)
         
@@ -422,8 +379,9 @@ class MainWindow(QMainWindow):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setToolTip("Peak & Aim Assistant - MAAKTHUNDER")
         
-        if os.path.exists("icon.ico"):
-            icon = QIcon("icon.ico")
+        icon_path = resource_path("icon.ico")
+        if os.path.exists(icon_path):
+            icon = QIcon(icon_path)
             self.tray_icon.setIcon(icon)
         else:
             pixmap = QPixmap(16, 16)
