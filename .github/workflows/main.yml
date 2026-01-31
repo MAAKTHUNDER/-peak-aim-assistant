@@ -26,9 +26,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
-    - name: Build EXE with Icon
+    - name: Build EXE with all resources
       run: |
-        pyinstaller --onefile --windowed --icon=icon.ico --name=PeakAimAssistant peak_aim_assistant.py
+        pyinstaller --onefile --windowed --icon=icon.ico --add-data "logo.png;." --add-data "youtube.png;." --add-data "tiktok.png;." --add-data "icon.ico;." --name=PeakAimAssistant peak_aim_assistant.py
     
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
