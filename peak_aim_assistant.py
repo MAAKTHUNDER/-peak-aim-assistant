@@ -5,7 +5,7 @@ import time
 import webbrowser
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QLineEdit, 
-                             QCheckBox, QSystemTrayIcon, QMenu, QAction, QMessageBox, QComboBox)
+                             QCheckBox, QSystemTrayIcon, QMenu, QAction, QMessageBox, QComboBox, QDialog)
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSharedMemory
 from PyQt5.QtGui import QIcon, QFont, QPalette, QColor, QPixmap, QCursor
 import keyboard
@@ -209,6 +209,78 @@ class MacroThread(QThread):
             except:
                 pass
 
+class SettingsDialog(QDialog):
+    def __init__(self, parent, current_hotkey, current_aim):
+        super().__init__(parent)
+        self.setWindowTitle("Settings")
+        self.setFixedSize(400, 200)
+        
+        palette = QPalette()
+        palette.setColor(QPalette.Window, QColor(30, 30, 30))
+        palette.setColor(QPalette.WindowText, Qt.white)
+        self.setPalette(palette)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        
+        # Title
+        title = QLabel("⚙ Settings")
+        title.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        title.setStyleSheet("color: white;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+        
+        layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
+        
+        # Macro Hotkey
+        hotkey_layout = QHBoxLayout()
+        hotkey_label = QLabel("Macro Hotkey:")
+        hotkey_label.setStyleSheet("color: #CCCCCC;")
+        hotkey_label.setFixedWidth(120)
+        hotkey_layout.addWidget(hotkey_label)
+        
+        self.hotkey_combo = QComboBox()
+        self.hotkey_combo.addItems(MACRO_HOTKEYS)
+        self.hotkey_combo.setCurrentText(current_hotkey)
+        self.hotkey_combo.setMaxVisibleItems(10)
+        hotkey_layout.addWidget(self.hotkey_combo)
+        layout.addLayout(hotkey_layout)
+        
+        # Aim Button
+        aim_layout = QHBoxLayout()
+        aim_label = QLabel("Aim Button:")
+        aim_label.setStyleSheet("color: #CCCCCC;")
+        aim_label.setFixedWidth(120)
+        aim_layout.addWidget(aim_label)
+        
+        self.aim_combo = QComboBox()
+        self.aim_combo.addItems(AIM_BUTTONS)
+        self.aim_combo.setCurrentText(current_aim)
+        self.aim_combo.setMaxVisibleItems(10)
+        aim_layout.addWidget(self.aim_combo)
+        layout.addLayout(aim_layout)
+        
+        layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        save_btn = QPushButton("Apply & Save")
+        save_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        save_btn.clicked.connect(self.accept)
+        button_layout.addWidget(save_btn)
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.reject)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+    
+    def get_values(self):
+        return self.hotkey_combo.currentText(), self.aim_combo.currentText()
+
 class ClickableLabel(QLabel):
     """Custom clickable label for links"""
     def __init__(self, text, url, parent=None):
@@ -310,9 +382,30 @@ class MainWindow(QMainWindow):
         except:
             pass
     
+    def show_settings(self):
+        """Show settings dialog"""
+        dialog = SettingsDialog(self, self.macro_hotkey, self.aim_button)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            new_hotkey, new_aim = dialog.get_values()
+            
+            # Update macro hotkey
+            if new_hotkey != self.macro_hotkey:
+                self.macro_hotkey = new_hotkey
+                self.register_hotkey(new_hotkey)
+                self.toggle_btn.setText(f"Toggle Macro ({new_hotkey})")
+            
+            # Update aim button
+            if new_aim != self.aim_button:
+                self.aim_button = new_aim
+                self.macro_thread.set_aim_button(new_aim)
+            
+            self.save_settings()
+            QMessageBox.information(self, "Success", "Settings saved successfully!")
+    
     def init_ui(self):
         self.setWindowTitle("Peak & Aim Assistant v1.0")
-        self.setFixedSize(400, 750)
+        self.setFixedSize(400, 650)
         
         palette = QPalette()
         palette.setColor(QPalette.Window, QColor(30, 30, 30))
@@ -381,42 +474,12 @@ class MainWindow(QMainWindow):
         self.toggle_btn.clicked.connect(self.toggle_macro)
         layout.addWidget(self.toggle_btn)
         
-        layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
-        
-        # Key Settings Section
-        settings_label = QLabel("Key Settings:")
-        settings_label.setStyleSheet("color: white; font-weight: bold;")
-        layout.addWidget(settings_label)
-        
-        # Macro Hotkey
-        hotkey_layout = QHBoxLayout()
-        hotkey_label = QLabel("Macro Hotkey:")
-        hotkey_label.setStyleSheet("color: #CCCCCC;")
-        hotkey_label.setFixedWidth(120)
-        hotkey_layout.addWidget(hotkey_label)
-        
-        self.hotkey_combo = QComboBox()
-        self.hotkey_combo.addItems(MACRO_HOTKEYS)
-        self.hotkey_combo.setCurrentText(self.macro_hotkey)
-        self.hotkey_combo.setMaxVisibleItems(10)
-        self.hotkey_combo.currentTextChanged.connect(self.on_hotkey_changed)
-        hotkey_layout.addWidget(self.hotkey_combo)
-        layout.addLayout(hotkey_layout)
-        
-        # Aim Button
-        aim_layout = QHBoxLayout()
-        aim_label = QLabel("Aim Button:")
-        aim_label.setStyleSheet("color: #CCCCCC;")
-        aim_label.setFixedWidth(120)
-        aim_layout.addWidget(aim_label)
-        
-        self.aim_combo = QComboBox()
-        self.aim_combo.addItems(AIM_BUTTONS)
-        self.aim_combo.setCurrentText(self.aim_button)
-        self.aim_combo.setMaxVisibleItems(10)
-        self.aim_combo.currentTextChanged.connect(self.on_aim_changed)
-        aim_layout.addWidget(self.aim_combo)
-        layout.addLayout(aim_layout)
+        # Settings button
+        settings_btn = QPushButton("⚙ Settings")
+        settings_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        settings_btn.setFixedHeight(40)
+        settings_btn.clicked.connect(self.show_settings)
+        layout.addWidget(settings_btn)
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
@@ -464,20 +527,18 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Hotkeys section
-        hotkeys_label = QLabel("How it Works:")
-        hotkeys_label.setStyleSheet("color: white; font-weight: bold;")
-        layout.addWidget(hotkeys_label)
+        # How it Works section
+        how_label = QLabel("How it Works:")
+        how_label.setStyleSheet("color: white; font-weight: bold;")
+        layout.addWidget(how_label)
         
-        hotkey1 = QLabel(f"{self.macro_hotkey} - Toggle Macro ON/OFF")
-        hotkey1.setStyleSheet("color: #CCCCCC;")
-        layout.addWidget(hotkey1)
-        self.hotkey_display = hotkey1
+        hotkey_text = QLabel(f"{self.macro_hotkey} - Toggle Macro ON/OFF (Default)")
+        hotkey_text.setStyleSheet("color: #CCCCCC;")
+        layout.addWidget(hotkey_text)
         
-        hotkey2 = QLabel(f"Q/E - Peak with {self.aim_button} (Aim)")
-        hotkey2.setStyleSheet("color: #CCCCCC;")
-        layout.addWidget(hotkey2)
-        self.aim_display = hotkey2
+        peak_text = QLabel("Q/E - Peak with Auto-Aim")
+        peak_text.setStyleSheet("color: #CCCCCC;")
+        layout.addWidget(peak_text)
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
@@ -530,21 +591,6 @@ class MainWindow(QMainWindow):
             self.show()
         else:
             self.hide()
-    
-    def on_hotkey_changed(self, new_key):
-        """Handle macro hotkey change"""
-        self.macro_hotkey = new_key
-        self.register_hotkey(new_key)
-        self.toggle_btn.setText(f"Toggle Macro ({new_key})")
-        self.hotkey_display.setText(f"{new_key} - Toggle Macro ON/OFF")
-        self.save_settings()
-    
-    def on_aim_changed(self, new_button):
-        """Handle aim button change"""
-        self.aim_button = new_button
-        self.macro_thread.set_aim_button(new_button)
-        self.aim_display.setText(f"Q/E - Peak with {new_button} (Aim)")
-        self.save_settings()
     
     def setup_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
