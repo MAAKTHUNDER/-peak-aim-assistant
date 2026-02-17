@@ -5,7 +5,8 @@ import time
 import webbrowser
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QLineEdit, 
-                             QCheckBox, QSystemTrayIcon, QMenu, QAction, QMessageBox, QComboBox, QDialog)
+                             QCheckBox, QSystemTrayIcon, QMenu, QAction, 
+                             QMessageBox, QComboBox, QDialog, QSlider)
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSharedMemory
 from PyQt5.QtGui import QIcon, QFont, QPalette, QColor, QPixmap, QCursor
 import keyboard
@@ -61,7 +62,6 @@ def get_microphone_list():
             for i in range(p.get_device_count()):
                 try:
                     device = p.get_device_info_by_index(i)
-                    # Only input devices (microphones have maxInputChannels > 0)
                     if device['maxInputChannels'] > 0:
                         name = device['name'][:40].strip()
                         if name:
@@ -77,29 +77,21 @@ class VoiceThread(QThread):
     command_received = pyqtSignal(str)
     status_update = pyqtSignal(str)
     
-    def __init__(self, mic_index=None):
+    def __init__(self, mic_index=None, energy_threshold=1500):
         super().__init__()
         self.running = False
         self.enabled = False
         self.recognizer = None
         self.microphone = None
         self.mic_index = mic_index
+        self.energy_threshold = energy_threshold
     
     def initialize(self):
         try:
             self.recognizer = sr.Recognizer()
-
-            # HIGH threshold = only loud/close voice triggers
-            # Ignores TV and background noise
-            self.recognizer.energy_threshold = 3000
-
-            # Keep threshold fixed - don't auto lower it
+            self.recognizer.energy_threshold = self.energy_threshold
             self.recognizer.dynamic_energy_threshold = False
-
-            # Short pause = faster response after speaking
             self.recognizer.pause_threshold = 0.3
-
-            # Less non-speaking duration = faster
             self.recognizer.non_speaking_duration = 0.2
 
             if self.mic_index is not None:
@@ -107,10 +99,8 @@ class VoiceThread(QThread):
             else:
                 self.microphone = sr.Microphone()
 
-            # Short calibration - just 0.5 seconds
             with self.microphone as source:
                 self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-
             return True
         except Exception as e:
             self.status_update.emit(f"Mic Error: {str(e)[:40]}")
@@ -118,7 +108,7 @@ class VoiceThread(QThread):
     
     def run(self):
         if not SPEECH_AVAILABLE:
-            self.status_update.emit("SpeechRecognition not installed!")
+            self.status_update.emit("Not installed!")
             return
         
         if not self.initialize():
@@ -137,8 +127,8 @@ class VoiceThread(QThread):
                     try:
                         audio = self.recognizer.listen(
                             source,
-                            timeout=1,          # Faster timeout
-                            phrase_time_limit=1.5  # Short words only
+                            timeout=1,
+                            phrase_time_limit=1.5
                         )
                     except sr.WaitTimeoutError:
                         continue
@@ -160,16 +150,13 @@ class VoiceThread(QThread):
                                 self.command_received.emit('off')
                                 break
 
-                    # Reset status after 2 seconds
                     time.sleep(2)
                     if self.running and self.enabled:
                         self.status_update.emit("Listening...")
                             
                 except sr.UnknownValueError:
-                    # Could not understand - keep listening
                     self.status_update.emit("Listening...")
                 except sr.RequestError:
-                    # No internet - show error
                     self.status_update.emit("No internet!")
                     time.sleep(2)
                     self.status_update.emit("Listening...")
@@ -321,10 +308,11 @@ class MacroThread(QThread):
 
 class SettingsDialog(QDialog):
     def __init__(self, parent, current_hotkey, current_aim,
-                 voice_enabled, current_mic, voice_status_text):
+                 voice_enabled, current_mic, voice_status_text,
+                 energy_threshold=1500):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedSize(400, 370)
+        self.setFixedSize(400, 420)
         self.parent_window = parent
         
         palette = QPalette()
@@ -333,9 +321,10 @@ class SettingsDialog(QDialog):
         self.setPalette(palette)
         
         layout = QVBoxLayout()
-        layout.setSpacing(12)
+        layout.setSpacing(10)
         layout.setContentsMargins(15, 10, 15, 10)
         
+        # Title
         title = QLabel("⚙ Settings")
         title.setFont(QFont("Segoe UI", 14, QFont.Bold))
         title.setStyleSheet("color: white;")
@@ -383,7 +372,7 @@ class SettingsDialog(QDialog):
         self.voice_check.stateChanged.connect(self.on_voice_toggled)
         layout.addWidget(self.voice_check)
         
-        # Microphone - only real input devices
+        # Microphone
         mic_layout = QHBoxLayout()
         mic_label = QLabel("Microphone:")
         mic_label.setStyleSheet("color: #CCCCCC;")
@@ -400,6 +389,53 @@ class SettingsDialog(QDialog):
         mic_layout.addWidget(self.mic_combo)
         layout.addLayout(mic_layout)
         
+        # Sensitivity Slider
+        sens_label = QLabel("Sensitivity:")
+        sens_label.setStyleSheet("color: #CCCCCC;")
+        layout.addWidget(sens_label)
+        
+        slider_layout = QHBoxLayout()
+        quiet_label = QLabel("Quiet")
+        quiet_label.setStyleSheet("color: #888888; font-size: 8pt;")
+        slider_layout.addWidget(quiet_label)
+        
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setMinimum(500)
+        self.slider.setMaximum(4000)
+        self.slider.setValue(energy_threshold)
+        self.slider.setTickInterval(500)
+        self.slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #444444;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #00BFFF;
+                width: 16px;
+                height: 16px;
+                margin: -5px 0;
+                border-radius: 8px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #00BFFF;
+                border-radius: 3px;
+            }
+        """)
+        self.slider.valueChanged.connect(self.on_slider_changed)
+        slider_layout.addWidget(self.slider)
+        
+        loud_label = QLabel("Loud")
+        loud_label.setStyleSheet("color: #888888; font-size: 8pt;")
+        slider_layout.addWidget(loud_label)
+        layout.addLayout(slider_layout)
+        
+        # Slider value display
+        self.slider_value = QLabel(f"Value: {energy_threshold}")
+        self.slider_value.setStyleSheet("color: #00BFFF; font-size: 8pt;")
+        self.slider_value.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.slider_value)
+        
         # Voice status
         self.voice_status = QLabel(f"🎤 {voice_status_text}")
         color = "#00FF00" if "Listening" in voice_status_text else "#888888"
@@ -414,6 +450,7 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
+        # Buttons
         button_layout = QHBoxLayout()
         save_btn = QPushButton("Apply & Save")
         save_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
@@ -428,6 +465,9 @@ class SettingsDialog(QDialog):
         
         self.setLayout(layout)
     
+    def on_slider_changed(self, value):
+        self.slider_value.setText(f"Value: {value}")
+    
     def on_voice_toggled(self):
         enabled = self.voice_check.isChecked()
         if enabled:
@@ -435,7 +475,7 @@ class SettingsDialog(QDialog):
             self.voice_status.setStyleSheet("color: #FF8800; font-size: 8pt;")
             mic_index = self.mic_combo.currentIndex()
             actual_index = mic_index - 1 if mic_index > 0 else None
-            self.parent_window.start_voice(actual_index)
+            self.parent_window.start_voice(actual_index, self.slider.value())
         else:
             self.voice_status.setText("🎤 Disabled")
             self.voice_status.setStyleSheet("color: #888888; font-size: 8pt;")
@@ -460,7 +500,8 @@ class SettingsDialog(QDialog):
             self.aim_combo.currentText(),
             self.voice_check.isChecked(),
             self.mic_combo.currentText(),
-            actual_index
+            actual_index,
+            self.slider.value()
         )
 
 class ClickableLabel(QLabel):
@@ -497,7 +538,7 @@ class MainWindow(QMainWindow):
         self.set_window_icon()
         
         if self.voice_enabled:
-            self.start_voice(self.mic_index)
+            self.start_voice(self.mic_index, self.energy_threshold)
         
     def set_window_icon(self):
         icon_path = resource_path("icon.ico")
@@ -522,6 +563,7 @@ class MainWindow(QMainWindow):
                     self.voice_enabled = settings.get('voice_enabled', False)
                     self.mic_name = settings.get('mic_name', 'Default')
                     self.mic_index = settings.get('mic_index', None)
+                    self.energy_threshold = settings.get('energy_threshold', 1500)
                     self.is_first_run = False
             else:
                 self.set_defaults()
@@ -540,6 +582,7 @@ class MainWindow(QMainWindow):
         self.voice_enabled = False
         self.mic_name = 'Default'
         self.mic_index = None
+        self.energy_threshold = 1500
     
     def save_settings(self):
         try:
@@ -552,7 +595,8 @@ class MainWindow(QMainWindow):
                 'aim_button': self.aim_button,
                 'voice_enabled': self.voice_enabled,
                 'mic_name': self.mic_name,
-                'mic_index': self.mic_index
+                'mic_index': self.mic_index,
+                'energy_threshold': self.energy_threshold
             }
             with open(self.settings_file, 'w') as f:
                 json.dump(settings, f)
@@ -570,13 +614,16 @@ class MainWindow(QMainWindow):
         except:
             pass
     
-    def start_voice(self, mic_index=None):
+    def start_voice(self, mic_index=None, energy_threshold=1500):
         if not SPEECH_AVAILABLE:
             return
         if self.voice_thread and self.voice_thread.isRunning():
             self.voice_thread.stop()
             self.voice_thread.wait()
-        self.voice_thread = VoiceThread(mic_index=mic_index)
+        self.voice_thread = VoiceThread(
+            mic_index=mic_index,
+            energy_threshold=energy_threshold
+        )
         self.voice_thread.command_received.connect(self.on_voice_command)
         self.voice_thread.status_update.connect(self.on_voice_status)
         self.voice_thread.enabled = True
@@ -585,6 +632,8 @@ class MainWindow(QMainWindow):
     def stop_voice(self):
         if self.voice_thread:
             self.voice_thread.stop()
+        self.voice_label.setText("🎤 Voice: Disabled")
+        self.voice_label.setStyleSheet("color: #888888; font-size: 8pt;")
     
     def on_voice_command(self, command):
         if command == 'on':
@@ -595,6 +644,21 @@ class MainWindow(QMainWindow):
                 self.macro_thread.enabled = False
     
     def on_voice_status(self, status):
+        # Update main window label
+        if "Listening" in status:
+            self.voice_label.setText("🎤 Voice: Listening...")
+            self.voice_label.setStyleSheet("color: #00FF00; font-size: 8pt;")
+        elif "Heard" in status:
+            self.voice_label.setText(f"🎤 {status}")
+            self.voice_label.setStyleSheet("color: #00BFFF; font-size: 8pt;")
+        elif "Error" in status or "not" in status.lower():
+            self.voice_label.setText(f"🎤 {status}")
+            self.voice_label.setStyleSheet("color: #FF0000; font-size: 8pt;")
+        else:
+            self.voice_label.setText(f"🎤 {status}")
+            self.voice_label.setStyleSheet("color: #FF8800; font-size: 8pt;")
+        
+        # Update settings dialog if open
         if self.settings_dialog:
             self.settings_dialog.update_voice_status(status)
     
@@ -611,11 +675,12 @@ class MainWindow(QMainWindow):
             self.aim_button,
             self.voice_enabled,
             self.mic_name,
-            voice_status
+            voice_status,
+            self.energy_threshold
         )
         
         if self.settings_dialog.exec_() == QDialog.Accepted:
-            new_hotkey, new_aim, new_voice, new_mic_name, new_mic_index = \
+            new_hotkey, new_aim, new_voice, new_mic_name, new_mic_index, new_threshold = \
                 self.settings_dialog.get_values()
             
             if new_hotkey != self.macro_hotkey:
@@ -630,9 +695,10 @@ class MainWindow(QMainWindow):
             self.voice_enabled = new_voice
             self.mic_name = new_mic_name
             self.mic_index = new_mic_index
+            self.energy_threshold = new_threshold
             
             if new_voice:
-                self.start_voice(new_mic_index)
+                self.start_voice(new_mic_index, new_threshold)
             else:
                 self.stop_voice()
             
@@ -643,7 +709,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         self.setWindowTitle("Peak & Aim Assistant v1.0")
-        self.setFixedSize(400, 650)
+        self.setFixedSize(400, 680)
         
         palette = QPalette()
         palette.setColor(QPalette.Window, QColor(30, 30, 30))
@@ -655,6 +721,7 @@ class MainWindow(QMainWindow):
         
         layout = QVBoxLayout()
         layout.setSpacing(8)
+        layout.setContentsMargins(0, 5, 0, 0)
         
         # Title - EXACT same as your perfect UI
         title_container = QHBoxLayout()
@@ -749,6 +816,11 @@ class MainWindow(QMainWindow):
         self.minimize_check.setChecked(self.start_minimized)
         self.minimize_check.stateChanged.connect(self.toggle_minimize)
         layout.addWidget(self.minimize_check)
+        
+        # Voice status on main window
+        self.voice_label = QLabel("🎤 Voice: Disabled")
+        self.voice_label.setStyleSheet("color: #888888; font-size: 8pt;")
+        layout.addWidget(self.voice_label)
         
         tip_label = QLabel("Tip: Scope auto-resets after 30s inactivity")
         tip_label.setStyleSheet("color: #00FF00; font-size: 8pt;")
