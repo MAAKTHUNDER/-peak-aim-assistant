@@ -25,6 +25,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+        pip install pipwin
+        pipwin install pyaudio
     
     - name: Build EXE with all resources
       run: |
