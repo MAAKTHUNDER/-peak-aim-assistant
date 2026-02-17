@@ -18,6 +18,7 @@ except ImportError:
     SPEECH_AVAILABLE = False
 
 def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
     try:
         base_path = sys._MEIPASS
     except Exception:
@@ -52,45 +53,16 @@ AIM_BUTTONS = [
 ]
 
 def get_microphone_list():
-    """Get microphone list using Windows API via ctypes"""
+    """Get real microphone list - only real mics or just Default"""
     mic_list = ['Default']
     try:
-        # Try using speech_recognition to get mic list
         if SPEECH_AVAILABLE:
-            try:
-                mics = sr.Microphone.list_microphone_names()
-                for i, mic in enumerate(mics):
-                    if mic.strip():
-                        mic_list.append(f"{i}: {mic[:40]}")
-            except:
-                pass
-        
-        # If still only default, try Windows MMDevice API
-        if len(mic_list) == 1:
-            try:
-                import ctypes
-                import ctypes.wintypes
-                # Use winreg to find audio devices
-                import winreg
-                key_path = r"SYSTEM\CurrentControlSet\Control\DeviceClasses\{e6327cad-dcec-4949-ae8a-991e976a79d2}"
-                try:
-                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
-                    i = 0
-                    while True:
-                        try:
-                            subkey_name = winreg.EnumKey(key, i)
-                            mic_list.append(f"Microphone {i+1}")
-                            i += 1
-                        except WindowsError:
-                            break
-                except:
-                    pass
-            except:
-                pass
-                
+            mics = sr.Microphone.list_microphone_names()
+            for i, mic in enumerate(mics):
+                if mic.strip():
+                    mic_list.append(f"{i}: {mic[:40]}")
     except:
         pass
-    
     return mic_list
 
 class VoiceThread(QThread):
@@ -105,9 +77,6 @@ class VoiceThread(QThread):
         self.microphone = None
         self.mic_index = mic_index
     
-    def set_mic_index(self, index):
-        self.mic_index = index
-    
     def initialize(self):
         try:
             self.recognizer = sr.Recognizer()
@@ -115,8 +84,8 @@ class VoiceThread(QThread):
             self.recognizer.dynamic_energy_threshold = True
             self.recognizer.pause_threshold = 0.5
             
-            if self.mic_index is not None and self.mic_index > 0:
-                self.microphone = sr.Microphone(device_index=self.mic_index - 1)
+            if self.mic_index is not None:
+                self.microphone = sr.Microphone(device_index=self.mic_index)
             else:
                 self.microphone = sr.Microphone()
             
@@ -133,7 +102,6 @@ class VoiceThread(QThread):
             return
         
         if not self.initialize():
-            self.status_update.emit("Microphone not found!")
             return
         
         self.status_update.emit("Listening...")
@@ -337,7 +305,7 @@ class SettingsDialog(QDialog):
                  voice_enabled, current_mic, voice_status_text):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedSize(400, 380)
+        self.setFixedSize(400, 370)
         self.parent_window = parent
         
         palette = QPalette()
@@ -356,7 +324,7 @@ class SettingsDialog(QDialog):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
         
-        layout.addWidget(self.make_divider())
+        layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
         # Macro Hotkey
         hotkey_layout = QHBoxLayout()
@@ -384,7 +352,7 @@ class SettingsDialog(QDialog):
         aim_layout.addWidget(self.aim_combo)
         layout.addLayout(aim_layout)
         
-        layout.addWidget(self.make_divider())
+        layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
         # Voice Control
         voice_title = QLabel("🎤 Voice Control:")
@@ -397,7 +365,7 @@ class SettingsDialog(QDialog):
         self.voice_check.stateChanged.connect(self.on_voice_toggled)
         layout.addWidget(self.voice_check)
         
-        # Microphone
+        # Microphone dropdown
         mic_layout = QHBoxLayout()
         mic_label = QLabel("Microphone:")
         mic_label.setStyleSheet("color: #CCCCCC;")
@@ -406,7 +374,6 @@ class SettingsDialog(QDialog):
         self.mic_combo = QComboBox()
         self.mic_list = get_microphone_list()
         self.mic_combo.addItems(self.mic_list)
-        # Set saved mic if available
         if current_mic in self.mic_list:
             self.mic_combo.setCurrentText(current_mic)
         else:
@@ -427,7 +394,7 @@ class SettingsDialog(QDialog):
         hint.setStyleSheet("color: #888888; font-size: 8pt;")
         layout.addWidget(hint)
         
-        layout.addWidget(self.make_divider())
+        layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -436,7 +403,6 @@ class SettingsDialog(QDialog):
         save_btn.setFixedHeight(35)
         save_btn.clicked.connect(self.accept)
         button_layout.addWidget(save_btn)
-        
         close_btn = QPushButton("Close")
         close_btn.setFixedHeight(35)
         close_btn.clicked.connect(self.reject)
@@ -445,17 +411,15 @@ class SettingsDialog(QDialog):
         
         self.setLayout(layout)
     
-    def make_divider(self):
-        d = QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        d.setStyleSheet("color: #444444;")
-        return d
-    
     def on_voice_toggled(self):
         enabled = self.voice_check.isChecked()
         if enabled:
             self.voice_status.setText("🎤 Starting...")
             self.voice_status.setStyleSheet("color: #FF8800; font-size: 8pt;")
-            self.parent_window.start_voice(self.mic_combo.currentIndex())
+            # Get mic index from selected item
+            mic_index = self.mic_combo.currentIndex()
+            actual_index = mic_index - 1 if mic_index > 0 else None
+            self.parent_window.start_voice(actual_index)
         else:
             self.voice_status.setText("🎤 Disabled")
             self.voice_status.setStyleSheet("color: #888888; font-size: 8pt;")
@@ -473,12 +437,14 @@ class SettingsDialog(QDialog):
             self.voice_status.setStyleSheet("color: #888888; font-size: 8pt;")
     
     def get_values(self):
+        mic_index = self.mic_combo.currentIndex()
+        actual_index = mic_index - 1 if mic_index > 0 else None
         return (
             self.hotkey_combo.currentText(),
             self.aim_combo.currentText(),
             self.voice_check.isChecked(),
             self.mic_combo.currentText(),
-            self.mic_combo.currentIndex()
+            actual_index
         )
 
 class ClickableLabel(QLabel):
@@ -515,7 +481,6 @@ class MainWindow(QMainWindow):
         
         self.set_window_icon()
         
-        # Auto start voice if was enabled
         if self.voice_enabled:
             self.start_voice(self.mic_index)
         
@@ -541,7 +506,7 @@ class MainWindow(QMainWindow):
                     self.aim_button = settings.get('aim_button', 'O')
                     self.voice_enabled = settings.get('voice_enabled', False)
                     self.mic_name = settings.get('mic_name', 'Default')
-                    self.mic_index = settings.get('mic_index', 0)
+                    self.mic_index = settings.get('mic_index', None)
                     self.is_first_run = False
             else:
                 self.set_defaults()
@@ -559,7 +524,7 @@ class MainWindow(QMainWindow):
         self.aim_button = 'O'
         self.voice_enabled = False
         self.mic_name = 'Default'
-        self.mic_index = 0
+        self.mic_index = None
     
     def save_settings(self):
         try:
@@ -590,17 +555,13 @@ class MainWindow(QMainWindow):
         except:
             pass
     
-    def start_voice(self, mic_index=0):
+    def start_voice(self, mic_index=None):
         if not SPEECH_AVAILABLE:
             return
-        
-        # Stop existing
         if self.voice_thread and self.voice_thread.isRunning():
             self.voice_thread.stop()
             self.voice_thread.wait()
-        
-        actual_index = mic_index - 1 if mic_index > 0 else None
-        self.voice_thread = VoiceThread(mic_index=actual_index)
+        self.voice_thread = VoiceThread(mic_index=mic_index)
         self.voice_thread.command_received.connect(self.on_voice_command)
         self.voice_thread.status_update.connect(self.on_voice_status)
         self.voice_thread.enabled = True
@@ -666,6 +627,7 @@ class MainWindow(QMainWindow):
         self.settings_dialog = None
     
     def init_ui(self):
+        # EXACT SAME as your perfect working UI
         self.setWindowTitle("Peak & Aim Assistant v1.0")
         self.setFixedSize(400, 650)
         
@@ -680,7 +642,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         layout.setSpacing(8)
         
-        # Title - EXACTLY like your perfect UI
+        # Title section with logo beside
         title_container = QHBoxLayout()
         title_container.addStretch()
         
@@ -848,7 +810,6 @@ class MainWindow(QMainWindow):
     def setup_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setToolTip("Peak & Aim Assistant - MAAKTHUNDER")
-        
         icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
@@ -856,7 +817,6 @@ class MainWindow(QMainWindow):
             pixmap = QPixmap(16, 16)
             pixmap.fill(QColor(0, 255, 0))
             self.tray_icon.setIcon(QIcon(pixmap))
-        
         tray_menu = QMenu()
         show_action = QAction("Show GUI", self)
         show_action.triggered.connect(self.show)
@@ -868,7 +828,6 @@ class MainWindow(QMainWindow):
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.quit_app)
         tray_menu.addAction(exit_action)
-        
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.tray_clicked)
         self.tray_icon.show()
@@ -882,7 +841,6 @@ class MainWindow(QMainWindow):
         self.overlay.move(self.overlay_x, self.overlay_y)
         self.overlay.update_status(False, False, self.overlay_bg)
         self.overlay.show()
-        
         self.overlay_timer = QTimer()
         self.overlay_timer.timeout.connect(self.update_overlay_display)
         self.overlay_timer.start(300)
@@ -948,7 +906,6 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-    
     shared_mem = QSharedMemory("PeakAimAssistantUniqueName")
     if not shared_mem.create(1):
         msg = QMessageBox()
@@ -958,7 +915,6 @@ def main():
         msg.setInformativeText("Check your system tray.")
         msg.exec_()
         sys.exit(0)
-    
     window = MainWindow()
     sys.exit(app.exec_())
 
