@@ -36,7 +36,7 @@ Peak & Aim Assistant is a lightweight, customizable macro tool designed to enhan
 - ✅ **Peak & Aim Combo** - Press Q or E to automatically hold your aim button
 - ✅ **Scope Detection** - Right-click detection (tap to toggle, hold for temporary)
 - ✅ **Auto-Recovery** - Watchdog system prevents stuck keys
-- ✅ **10-Second Auto-Reset** - Scope status resets automatically if no activity
+- ✅ **30-Second Auto-Reset** - Scope status resets automatically if no activity
 
 ### Customization
 - ✅ **Custom Macro Hotkey** - Choose from 100+ keyboard keys (Default: F8)
