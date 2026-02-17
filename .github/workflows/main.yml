@@ -25,8 +25,8 @@ jobs:
         pip install pyinstaller
     
     - name: Install PyAudio
-      run: |
-        pip install https://files.pythonhosted.org/packages/b0/cd/7c7f3585244867d02c61a0e7b83b96dde8ac5b4b628e3abb62a85eb2af6f/PyAudio-0.2.14-cp311-cp311-win_amd64.whl
+  run: |
+    pip install https://files.pythonhosted.org/packages/b0/cd/7c7f3585244867d02c61a0e7b83b96dde8ac5b4b628e3abb62a85eb2af6f/PyAudio-0.2.14-cp311-cp311-win_amd64.whl
     
     - name: Build EXE with all resources
       run: |
