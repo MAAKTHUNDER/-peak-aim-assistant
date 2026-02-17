@@ -10,35 +10,41 @@ jobs:
     runs-on: windows-latest
 
     steps:
+    # Step 1: Checkout repo
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Setup Python
+    # Step 2: Setup Python
+    - name: Setup Python 3.11
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
+    # Step 3: Upgrade pip
     - name: Upgrade pip
       run: python -m pip install --upgrade pip
 
-    - name: Install dependencies
+    # Step 4: Install dependencies
+    - name: Install Python dependencies
       run: |
         pip install -r requirements.txt
         pip install pyinstaller
-        pip install pyaudio
 
+    # Step 5: Build EXE (PowerShell-compatible)
     - name: Build EXE
+      shell: pwsh
       run: |
-        pyinstaller --onefile --windowed ^
-          --hidden-import=pyaudio ^
-          --icon=icon.ico ^
-          --add-data "logo.png;." ^
-          --add-data "youtube.png;." ^
-          --add-data "tiktok.png;." ^
-          --add-data "icon.ico;." ^
-          --name=PeakAimAssistant ^
+        pyinstaller --onefile --windowed `
+          --hidden-import=pyaudio `
+          --icon=icon.ico `
+          --add-data "logo.png;." `
+          --add-data "youtube.png;." `
+          --add-data "tiktok.png;." `
+          --add-data "icon.ico;." `
+          --name=PeakAimAssistant `
           peak_aim_assistant.py
 
+    # Step 6: Upload EXE artifact
     - name: Upload EXE
       uses: actions/upload-artifact@v4
       with:
