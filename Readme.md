@@ -56,14 +56,17 @@ Peak & Aim Assistant is a lightweight, customizable macro tool designed to enhan
 
 ### Main Interface
 ![Main GUI](screenshots/main_gui.png)
+
 *Clean and intuitive main interface*
 
 ### Settings Panel
 ![Settings](screenshots/settings.png)
+
 *Customizable hotkeys and buttons*
 
 ### In-Game Overlay
 ![Overlay](screenshots/overlay.png)
+
 *Real-time status display during gameplay*
 
 ---
