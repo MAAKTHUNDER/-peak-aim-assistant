@@ -18,7 +18,6 @@ except ImportError:
     SPEECH_AVAILABLE = False
 
 def resource_path(relative_path):
-    """Get absolute path to resource, works for dev and for PyInstaller"""
     try:
         base_path = sys._MEIPASS
     except Exception:
@@ -53,14 +52,23 @@ AIM_BUTTONS = [
 ]
 
 def get_microphone_list():
-    """Get real microphone list - only real mics or just Default"""
+    """Get ONLY real input microphone devices"""
     mic_list = ['Default']
     try:
         if SPEECH_AVAILABLE:
-            mics = sr.Microphone.list_microphone_names()
-            for i, mic in enumerate(mics):
-                if mic.strip():
-                    mic_list.append(f"{i}: {mic[:40]}")
+            import pyaudio
+            p = pyaudio.PyAudio()
+            for i in range(p.get_device_count()):
+                try:
+                    device = p.get_device_info_by_index(i)
+                    # Only input devices (microphones have maxInputChannels > 0)
+                    if device['maxInputChannels'] > 0:
+                        name = device['name'][:40].strip()
+                        if name:
+                            mic_list.append(f"{i}: {name}")
+                except:
+                    continue
+            p.terminate()
     except:
         pass
     return mic_list
@@ -80,17 +88,29 @@ class VoiceThread(QThread):
     def initialize(self):
         try:
             self.recognizer = sr.Recognizer()
-            self.recognizer.energy_threshold = 300
-            self.recognizer.dynamic_energy_threshold = True
-            self.recognizer.pause_threshold = 0.5
-            
+
+            # HIGH threshold = only loud/close voice triggers
+            # Ignores TV and background noise
+            self.recognizer.energy_threshold = 3000
+
+            # Keep threshold fixed - don't auto lower it
+            self.recognizer.dynamic_energy_threshold = False
+
+            # Short pause = faster response after speaking
+            self.recognizer.pause_threshold = 0.3
+
+            # Less non-speaking duration = faster
+            self.recognizer.non_speaking_duration = 0.2
+
             if self.mic_index is not None:
                 self.microphone = sr.Microphone(device_index=self.mic_index)
             else:
                 self.microphone = sr.Microphone()
-            
+
+            # Short calibration - just 0.5 seconds
             with self.microphone as source:
-                self.recognizer.adjust_for_ambient_noise(source, duration=1)
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+
             return True
         except Exception as e:
             self.status_update.emit(f"Mic Error: {str(e)[:40]}")
@@ -117,8 +137,8 @@ class VoiceThread(QThread):
                     try:
                         audio = self.recognizer.listen(
                             source,
-                            timeout=2,
-                            phrase_time_limit=3
+                            timeout=1,          # Faster timeout
+                            phrase_time_limit=1.5  # Short words only
                         )
                     except sr.WaitTimeoutError:
                         continue
@@ -127,31 +147,32 @@ class VoiceThread(QThread):
                     text = self.recognizer.recognize_google(audio).lower()
                     self.status_update.emit(f"Heard: {text}")
                     
+                    matched = False
                     for cmd in ON_COMMANDS:
                         if cmd in text:
                             self.command_received.emit('on')
+                            matched = True
                             break
                     
-                    for cmd in OFF_COMMANDS:
-                        if cmd in text:
-                            self.command_received.emit('off')
-                            break
-                            
-                except sr.UnknownValueError:
-                    self.status_update.emit("Listening...")
-                except sr.RequestError:
-                    try:
-                        text = self.recognizer.recognize_sphinx(audio).lower()
-                        for cmd in ON_COMMANDS:
-                            if cmd in text:
-                                self.command_received.emit('on')
-                                break
+                    if not matched:
                         for cmd in OFF_COMMANDS:
                             if cmd in text:
                                 self.command_received.emit('off')
                                 break
-                    except:
+
+                    # Reset status after 2 seconds
+                    time.sleep(2)
+                    if self.running and self.enabled:
                         self.status_update.emit("Listening...")
+                            
+                except sr.UnknownValueError:
+                    # Could not understand - keep listening
+                    self.status_update.emit("Listening...")
+                except sr.RequestError:
+                    # No internet - show error
+                    self.status_update.emit("No internet!")
+                    time.sleep(2)
+                    self.status_update.emit("Listening...")
                         
             except Exception:
                 time.sleep(0.5)
@@ -171,12 +192,10 @@ class OverlayWindow(QWidget):
             Qt.WindowTransparentForInput
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        
         layout = QHBoxLayout()
         self.label = QLabel("● INACTIVE | Scope: CLOSED")
         self.label.setFont(QFont("Consolas", 10, QFont.Bold))
         self.update_status(False, False, True)
-        
         layout.addWidget(self.label)
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
@@ -317,7 +336,6 @@ class SettingsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(15, 10, 15, 10)
         
-        # Title
         title = QLabel("⚙ Settings")
         title.setFont(QFont("Segoe UI", 14, QFont.Bold))
         title.setStyleSheet("color: white;")
@@ -365,7 +383,7 @@ class SettingsDialog(QDialog):
         self.voice_check.stateChanged.connect(self.on_voice_toggled)
         layout.addWidget(self.voice_check)
         
-        # Microphone dropdown
+        # Microphone - only real input devices
         mic_layout = QHBoxLayout()
         mic_label = QLabel("Microphone:")
         mic_label.setStyleSheet("color: #CCCCCC;")
@@ -396,7 +414,6 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Buttons
         button_layout = QHBoxLayout()
         save_btn = QPushButton("Apply & Save")
         save_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
@@ -416,7 +433,6 @@ class SettingsDialog(QDialog):
         if enabled:
             self.voice_status.setText("🎤 Starting...")
             self.voice_status.setStyleSheet("color: #FF8800; font-size: 8pt;")
-            # Get mic index from selected item
             mic_index = self.mic_combo.currentIndex()
             actual_index = mic_index - 1 if mic_index > 0 else None
             self.parent_window.start_voice(actual_index)
@@ -429,7 +445,7 @@ class SettingsDialog(QDialog):
         self.voice_status.setText(f"🎤 {status}")
         if "Listening" in status:
             self.voice_status.setStyleSheet("color: #00FF00; font-size: 8pt;")
-        elif "Error" in status or "not" in status.lower():
+        elif "Error" in status or "not" in status.lower() or "No internet" in status:
             self.voice_status.setStyleSheet("color: #FF0000; font-size: 8pt;")
         elif "Heard" in status:
             self.voice_status.setStyleSheet("color: #00BFFF; font-size: 8pt;")
@@ -472,7 +488,6 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.setup_tray()
         self.setup_overlay()
-        
         self.register_hotkey(self.macro_hotkey)
         
         self.watchdog_timer = QTimer()
@@ -627,7 +642,6 @@ class MainWindow(QMainWindow):
         self.settings_dialog = None
     
     def init_ui(self):
-        # EXACT SAME as your perfect working UI
         self.setWindowTitle("Peak & Aim Assistant v1.0")
         self.setFixedSize(400, 650)
         
@@ -642,17 +656,15 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         layout.setSpacing(8)
         
-        # Title section with logo beside
+        # Title - EXACT same as your perfect UI
         title_container = QHBoxLayout()
         title_container.addStretch()
-        
         logo_path = resource_path("logo.png")
         if os.path.exists(logo_path):
             logo_label = QLabel()
             logo_pixmap = QPixmap(logo_path)
             logo_label.setPixmap(logo_pixmap.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             title_container.addWidget(logo_label)
-        
         title_text_layout = QVBoxLayout()
         title_text_layout.setSpacing(0)
         title = QLabel("Peak & Aim Assistant")
@@ -687,14 +699,13 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Toggle button
+        # Buttons
         self.toggle_btn = QPushButton(f"Toggle Macro ({self.macro_hotkey})")
         self.toggle_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         self.toggle_btn.setFixedHeight(40)
         self.toggle_btn.clicked.connect(self.toggle_macro)
         layout.addWidget(self.toggle_btn)
         
-        # Settings button
         settings_btn = QPushButton("⚙ Settings")
         settings_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         settings_btn.setFixedHeight(40)
