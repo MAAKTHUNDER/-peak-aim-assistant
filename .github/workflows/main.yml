@@ -23,14 +23,23 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
-    
+
+    # ✅ FIXED PyAudio install
     - name: Install PyAudio
       run: |
-       pip install https://files.pythonhosted.org/packages/b0/cd/7c7f3585244867d02c61a0e7b83b96dde8ac5b4b628e3abb62a85eb2af6f/PyAudio-0.2.14-cp311-cp311-win_amd64.whl
+        pip install pipwin
+        pipwin install pyaudio
     
-    - name: Build EXE with all resources
+    - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --icon=icon.ico --add-data "logo.png;." --add-data "youtube.png;." --add-data "tiktok.png;." --add-data "icon.ico;." --name=PeakAimAssistant peak_aim_assistant.py
+        pyinstaller --onefile --windowed ^
+          --icon=icon.ico ^
+          --add-data "logo.png;." ^
+          --add-data "youtube.png;." ^
+          --add-data "tiktok.png;." ^
+          --add-data "icon.ico;." ^
+          --name=PeakAimAssistant ^
+          peak_aim_assistant.py
     
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
