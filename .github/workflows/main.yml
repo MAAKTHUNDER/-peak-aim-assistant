@@ -51,5 +51,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: PeakAimAssistant-Vosk-Windows
-        path: dist/PeakAimAssistant 2.0.0.exe
+        path: dist/PeakAimAssistant-Vosk.exe
         retention-days: 90
