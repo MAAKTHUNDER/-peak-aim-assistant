@@ -38,7 +38,7 @@ jobs:
           --add-data "tiktok.png;." `
           --add-data "icon.ico;." `
           --name=PeakAimAssistant-Vosk `
-          peak_aim_assistant_vosk.py
+          peak_aim_assistant.py
     
     - name: Upload EXE
       uses: actions/upload-artifact@v4
