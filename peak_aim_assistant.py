@@ -104,8 +104,8 @@ class VoiceThread(QThread):
             self.recognizer = sr.Recognizer()
             self.recognizer.energy_threshold        = self.energy_threshold
             self.recognizer.dynamic_energy_threshold = False
-            self.recognizer.pause_threshold          = 0.3
-            self.recognizer.non_speaking_duration    = 0.2
+            self.recognizer.pause_threshold          = 0.2   # faster end-of-speech detection
+            self.recognizer.non_speaking_duration    = 0.1   # quicker silence cutoff
             self.microphone = (
                 sr.Microphone(device_index=self.mic_index)
                 if self.mic_index is not None else sr.Microphone()
@@ -132,7 +132,7 @@ class VoiceThread(QThread):
                     continue
                 with self.microphone as source:
                     try:
-                        audio = self.recognizer.listen(source, timeout=1, phrase_time_limit=2)
+                        audio = self.recognizer.listen(source, timeout=1, phrase_time_limit=1.5)
                     except sr.WaitTimeoutError:
                         continue
                 try:
@@ -149,7 +149,7 @@ class VoiceThread(QThread):
                             if cmd in text:
                                 self.command_received.emit('on')
                                 break
-                    time.sleep(1.5)
+                    # No sleep — resume listening immediately for fast on/off switching
                     if self.running and self.enabled:
                         self.status_update.emit("Listening...")
                 except sr.UnknownValueError:
@@ -716,7 +716,7 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout()
         layout.setSpacing(8)
-        layout.setContentsMargins(0, 5, 0, 0)
+        layout.setContentsMargins(12, 5, 12, 10)
 
         # Title — exactly as original
         title_container = QHBoxLayout()
