@@ -3,11 +3,11 @@ import json
 import os
 import time
 import webbrowser
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, QLineEdit, 
-                             QCheckBox, QSystemTrayIcon, QMenu, QAction, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QPushButton, QLabel, QLineEdit,
+                             QCheckBox, QSystemTrayIcon, QMenu, QAction,
                              QMessageBox, QComboBox, QDialog, QSlider,
-                             QScrollArea, QSizePolicy, QSpinBox)
+                             QSizePolicy, QSpinBox)
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSharedMemory
 from PyQt5.QtGui import QIcon, QFont, QPalette, QColor, QPixmap, QCursor
 import keyboard
@@ -26,38 +26,34 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# ── Voice Commands ─────────────────────────────────────────────────────────────
-# Expanded so partial word matches work ("activate", "deactivate", etc.)
-ON_COMMANDS  = ['turn on', 'active', 'activate', 'enable', 'start', 'on']
-OFF_COMMANDS = ['turn off', 'inactive', 'deactivate', 'disable', 'stop', 'off']
+ON_COMMANDS  = ['turn on', 'activate', 'active', 'enable', 'start', ' on ']
+OFF_COMMANDS = ['turn off', 'deactivate', 'inactive', 'disable', 'stop', ' off ']
 
 MACRO_HOTKEYS = [
-    'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    'Shift', 'Ctrl', 'Alt', 'CapsLock', 'Tab', 'Esc', 'Backspace', 'Enter',
-    'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PageUp', 'PageDown',
-    'Insert', 'Delete', 'Space', 'Pause',
-    'Num0', 'Num1', 'Num2', 'Num3', 'Num4', 'Num5', 'Num6', 'Num7', 'Num8', 'Num9',
-    'NumLock', 'Num/', 'Num*', 'Num-', 'Num+', 'NumEnter', 'NumDel',
-    '-', '=', '[', ']', ';', "'", '`', ',', '.', '/', '\\', 'ScrollLock'
+    'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+    '1','2','3','4','5','6','7','8','9','0',
+    'A','B','C','D','E','F','G','H','I','J','K','L','M',
+    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+    'Shift','Ctrl','Alt','CapsLock','Tab','Esc','Backspace','Enter',
+    'Up','Down','Left','Right','Home','End','PageUp','PageDown',
+    'Insert','Delete','Space','Pause',
+    'Num0','Num1','Num2','Num3','Num4','Num5','Num6','Num7','Num8','Num9',
+    'NumLock','Num/','Num*','Num-','Num+','NumEnter','NumDel',
+    '-','=','[',']',';',"'",'`',',','.','/','\\',' ScrollLock'
 ]
 
 AIM_BUTTONS = [
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
-    'Space', 'Shift', 'Ctrl', 'Alt', 'Tab', 'Enter', 'CapsLock',
-    'Up', 'Down', 'Left', 'Right',
-    'Num0', 'Num1', 'Num2', 'Num3', 'Num4', 'Num5', 'Num6', 'Num7', 'Num8', 'Num9',
-    '-', '=', '[', ']', ';', "'", '`', ',', '.', '/', '\\',
-    'Left Click', 'Right Click', 'Middle Click'
+    'A','B','C','D','E','F','G','H','I','J','K','L','M',
+    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+    '1','2','3','4','5','6','7','8','9','0',
+    'Space','Shift','Ctrl','Alt','Tab','Enter','CapsLock',
+    'Up','Down','Left','Right',
+    'Num0','Num1','Num2','Num3','Num4','Num5','Num6','Num7','Num8','Num9',
+    '-','=','[',']',';',"'",'`',',','.','/','\\',' ',
+    'Left Click','Right Click','Middle Click'
 ]
 
-# ── Microphone helper ──────────────────────────────────────────────────────────
 def get_microphone_list():
-    """Return only real INPUT microphone devices (no output / loopback)."""
     mic_list = ['Default']
     try:
         if SPEECH_AVAILABLE:
@@ -67,24 +63,20 @@ def get_microphone_list():
             for i in range(p.get_device_count()):
                 try:
                     device = p.get_device_info_by_index(i)
-                    # Must have input channels
                     if device['maxInputChannels'] < 1:
                         continue
                     name = device['name'].strip()
-                    # Skip obvious output / loopback devices
                     name_lower = name.lower()
                     if any(x in name_lower for x in [
-                        'output', 'loopback', 'stereo mix', 'what u hear',
-                        'wave out', 'speaker', 'hdmi output', 'display audio',
-                        'digital output', 'spdif output', 'mix', 'playback'
+                        'output','loopback','stereo mix','what u hear',
+                        'wave out','speaker','hdmi output','display audio',
+                        'digital output','spdif output','playback'
                     ]):
                         continue
-                    # Deduplicate by name
                     if name_lower in seen:
                         continue
                     seen.add(name_lower)
-                    short_name = name[:45].strip()
-                    mic_list.append(f"{i}: {short_name}")
+                    mic_list.append(f"{i}: {name[:50].strip()}")
                 except Exception:
                     continue
             p.terminate()
@@ -110,15 +102,13 @@ class VoiceThread(QThread):
     def initialize(self):
         try:
             self.recognizer = sr.Recognizer()
-            self.recognizer.energy_threshold       = self.energy_threshold
+            self.recognizer.energy_threshold        = self.energy_threshold
             self.recognizer.dynamic_energy_threshold = False
             self.recognizer.pause_threshold          = 0.3
             self.recognizer.non_speaking_duration    = 0.2
-
             self.microphone = (
                 sr.Microphone(device_index=self.mic_index)
-                if self.mic_index is not None
-                else sr.Microphone()
+                if self.mic_index is not None else sr.Microphone()
             )
             with self.microphone as source:
                 self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
@@ -133,27 +123,21 @@ class VoiceThread(QThread):
             return
         if not self.initialize():
             return
-
         self.status_update.emit("Listening...")
         self.running = True
-
         while self.running:
             try:
                 if not self.enabled:
                     time.sleep(0.2)
                     continue
-
                 with self.microphone as source:
                     try:
                         audio = self.recognizer.listen(source, timeout=1, phrase_time_limit=2)
                     except sr.WaitTimeoutError:
                         continue
-
                 try:
-                    text = self.recognizer.recognize_google(audio).lower().strip()
-                    self.status_update.emit(f"Heard: {text}")
-
-                    # Check OFF first (longer phrases take priority)
+                    text = ' ' + self.recognizer.recognize_google(audio).lower().strip() + ' '
+                    self.status_update.emit(f"Heard: {text.strip()}")
                     matched = False
                     for cmd in OFF_COMMANDS:
                         if cmd in text:
@@ -165,18 +149,15 @@ class VoiceThread(QThread):
                             if cmd in text:
                                 self.command_received.emit('on')
                                 break
-
                     time.sleep(1.5)
                     if self.running and self.enabled:
                         self.status_update.emit("Listening...")
-
                 except sr.UnknownValueError:
                     self.status_update.emit("Listening...")
                 except sr.RequestError:
                     self.status_update.emit("No internet!")
                     time.sleep(2)
                     self.status_update.emit("Listening...")
-
             except Exception:
                 time.sleep(0.5)
 
@@ -190,10 +171,8 @@ class OverlayWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(
-            Qt.WindowStaysOnTopHint |
-            Qt.FramelessWindowHint  |
-            Qt.Tool                 |
-            Qt.WindowTransparentForInput
+            Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint |
+            Qt.Tool | Qt.WindowTransparentForInput
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         layout = QHBoxLayout()
@@ -208,8 +187,8 @@ class OverlayWindow(QWidget):
         color  = "#00FF00" if active else "#FF0000"
         status = "ACTIVE"  if active else "INACTIVE"
         scope  = "OPEN"    if scope_open else "CLOSED"
-        bg     = "rgba(0, 0, 0, 180)" if show_bg else "transparent"
-        self.label.setStyleSheet(f"color: {color}; background-color: {bg}; padding: 5px;")
+        bg     = "rgba(0,0,0,180)" if show_bg else "transparent"
+        self.label.setStyleSheet(f"color:{color}; background-color:{bg}; padding:5px;")
         self.label.setText(f"● {status} | Scope: {scope}")
         self.adjustSize()
 
@@ -242,13 +221,11 @@ class MacroThread(QThread):
                 else:
                     self.right_click_pressed = False
                     if (time.time() - self.right_click_time) * 1000 < 300:
-                        self.scope_toggled         = not self.scope_toggled
+                        self.scope_toggled = not self.scope_toggled
                         self.last_right_click_activity = time.time()
 
         mouse_listener = MouseListener(on_click=on_click)
         mouse_listener.start()
-
-        last_e_state = last_q_state = False
 
         while self.running:
             try:
@@ -257,11 +234,8 @@ class MacroThread(QThread):
                         self.scope_toggled = False
 
                 if self.enabled:
-                    e_pressed = keyboard.is_pressed('e')
-                    q_pressed = keyboard.is_pressed('q')
-                    last_e_state = e_pressed
-                    last_q_state = q_pressed
-
+                    e_pressed    = keyboard.is_pressed('e')
+                    q_pressed    = keyboard.is_pressed('q')
                     scope_active = self.scope_toggled or self.right_click_pressed
                     should_hold  = (e_pressed or q_pressed) and not scope_active
 
@@ -277,10 +251,8 @@ class MacroThread(QThread):
                             self.aim_held = False
                         except Exception:
                             self.aim_held = False
-
                     self.status_update.emit(True, scope_active)
                 else:
-                    last_e_state = last_q_state = False
                     if self.aim_held:
                         try:
                             keyboard.release(self.aim_button)
@@ -290,7 +262,6 @@ class MacroThread(QThread):
                     self.status_update.emit(False, self.scope_toggled)
 
                 time.sleep(0.05 if self.enabled else 0.2)
-
             except Exception:
                 if self.aim_held:
                     try:
@@ -309,32 +280,37 @@ class MacroThread(QThread):
                 pass
 
 
-# ── Settings Dialog ────────────────────────────────────────────────────────────
+# ── ComboBox style ─────────────────────────────────────────────────────────────
 COMBO_STYLE = """
 QComboBox {
     background-color: #2a2a2a;
     color: white;
-    border: 1px solid #555;
+    border: 1px solid #555555;
     border-radius: 4px;
-    padding: 3px 6px;
-    min-height: 24px;
+    padding: 5px 8px;
+    min-height: 28px;
+    font-size: 10pt;
 }
 QComboBox QAbstractItemView {
     background-color: #2a2a2a;
     color: white;
     selection-background-color: #00BFFF;
+    border: 1px solid #555555;
+    min-width: 380px;
 }
-QComboBox::drop-down { border: none; }
+QComboBox::drop-down { border: none; width: 24px; }
 """
 
+
+# ── Settings Dialog — fixed size, no scrollbar ─────────────────────────────────
 class SettingsDialog(QDialog):
     def __init__(self, parent, current_hotkey, current_aim,
                  voice_enabled, current_mic, voice_status_text,
                  energy_threshold=1500):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedWidth(430)
-        self.setMinimumHeight(520)
+        # Wide enough that dropdown popup won't overflow; tall enough for all content
+        self.setFixedSize(480, 570)
         self.parent_window = parent
 
         palette = QPalette()
@@ -342,21 +318,9 @@ class SettingsDialog(QDialog):
         palette.setColor(QPalette.WindowText, Qt.white)
         self.setPalette(palette)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        # ── Scrollable content area ──────────────────────────────────────
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-
-        content = QWidget()
-        content.setStyleSheet("background-color: #1e1e1e;")
-        layout = QVBoxLayout(content)
-        layout.setSpacing(10)
-        layout.setContentsMargins(15, 12, 15, 12)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(7)
+        layout.setContentsMargins(20, 12, 20, 12)
 
         # Title
         title = QLabel("⚙ Settings")
@@ -367,39 +331,41 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(self._sep())
 
-        # ── Macro Hotkey ─────────────────────────────────────────────────
-        layout.addWidget(self._section_label("Macro Hotkey:"))
+        # Macro Hotkey
+        layout.addWidget(self._lbl("Macro Hotkey:"))
         self.hotkey_combo = QComboBox()
         self.hotkey_combo.addItems(MACRO_HOTKEYS)
         self.hotkey_combo.setCurrentText(current_hotkey)
         self.hotkey_combo.setMaxVisibleItems(12)
         self.hotkey_combo.setStyleSheet(COMBO_STYLE)
+        self.hotkey_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.hotkey_combo)
 
-        # ── Aim Button ───────────────────────────────────────────────────
-        layout.addWidget(self._section_label("Aim Button:"))
+        # Aim Button
+        layout.addWidget(self._lbl("Aim Button:"))
         self.aim_combo = QComboBox()
         self.aim_combo.addItems(AIM_BUTTONS)
         self.aim_combo.setCurrentText(current_aim)
         self.aim_combo.setMaxVisibleItems(12)
         self.aim_combo.setStyleSheet(COMBO_STYLE)
+        self.aim_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.aim_combo)
 
         layout.addWidget(self._sep())
 
-        # ── Voice Control ────────────────────────────────────────────────
-        voice_title = QLabel("🎤 Voice Control:")
-        voice_title.setStyleSheet("color: white; font-weight: bold; font-size: 11pt;")
-        layout.addWidget(voice_title)
+        # Voice Control header
+        vc_lbl = QLabel("🎤 Voice Control:")
+        vc_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 11pt;")
+        layout.addWidget(vc_lbl)
 
         self.voice_check = QCheckBox("Enable Voice Commands")
-        self.voice_check.setStyleSheet("color: white;")
+        self.voice_check.setStyleSheet("color: white; font-size: 10pt;")
         self.voice_check.setChecked(voice_enabled)
         self.voice_check.stateChanged.connect(self.on_voice_toggled)
         layout.addWidget(self.voice_check)
 
         # Microphone
-        layout.addWidget(self._section_label("Microphone:"))
+        layout.addWidget(self._lbl("Microphone:"))
         self.mic_combo = QComboBox()
         self.mic_list  = get_microphone_list()
         self.mic_combo.addItems(self.mic_list)
@@ -409,135 +375,119 @@ class SettingsDialog(QDialog):
             self.mic_combo.setCurrentIndex(0)
         self.mic_combo.setMaxVisibleItems(8)
         self.mic_combo.setStyleSheet(COMBO_STYLE)
+        self.mic_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.mic_combo)
 
-        # Sensitivity slider + editable spinbox
-        layout.addWidget(self._section_label("Sensitivity (0 – 4000):"))
+        # Sensitivity
+        layout.addWidget(self._lbl("Sensitivity (0 – 4000):"))
 
         slider_row = QHBoxLayout()
-        quiet_lbl = QLabel("Quiet")
-        quiet_lbl.setStyleSheet("color: #888; font-size: 8pt;")
-        slider_row.addWidget(quiet_lbl)
+        q_lbl = QLabel("Quiet")
+        q_lbl.setStyleSheet("color: #888888; font-size: 8pt;")
+        slider_row.addWidget(q_lbl)
 
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimum(0)
         self.slider.setMaximum(4000)
         self.slider.setValue(energy_threshold)
-        self.slider.setTickInterval(500)
         self.slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: #444; height: 6px; border-radius: 3px;
-            }
+            QSlider::groove:horizontal { background:#444444; height:6px; border-radius:3px; }
             QSlider::handle:horizontal {
-                background: #00BFFF; width: 16px; height: 16px;
-                margin: -5px 0; border-radius: 8px;
+                background:#00BFFF; width:16px; height:16px;
+                margin:-5px 0; border-radius:8px;
             }
-            QSlider::sub-page:horizontal {
-                background: #00BFFF; border-radius: 3px;
-            }
+            QSlider::sub-page:horizontal { background:#00BFFF; border-radius:3px; }
         """)
         slider_row.addWidget(self.slider)
 
-        loud_lbl = QLabel("Loud")
-        loud_lbl.setStyleSheet("color: #888; font-size: 8pt;")
-        slider_row.addWidget(loud_lbl)
+        l_lbl = QLabel("Loud")
+        l_lbl.setStyleSheet("color: #888888; font-size: 8pt;")
+        slider_row.addWidget(l_lbl)
         layout.addLayout(slider_row)
 
-        # Editable spinbox synced with slider
+        # Editable value spinbox
         spin_row = QHBoxLayout()
-        spin_row.addStretch()
+        val_lbl = QLabel("Value:")
+        val_lbl.setStyleSheet("color: #CCCCCC;")
+        spin_row.addWidget(val_lbl)
         self.spinbox = QSpinBox()
         self.spinbox.setMinimum(0)
         self.spinbox.setMaximum(4000)
         self.spinbox.setValue(energy_threshold)
-        self.spinbox.setFixedWidth(90)
+        self.spinbox.setFixedWidth(110)
         self.spinbox.setStyleSheet("""
             QSpinBox {
-                background: #2a2a2a; color: #00BFFF;
-                border: 1px solid #555; border-radius: 4px;
-                padding: 2px 4px; font-size: 10pt;
+                background:#2a2a2a; color:#00BFFF;
+                border:1px solid #555555; border-radius:4px;
+                padding:3px 6px; font-size:10pt;
             }
         """)
-        spin_row.addWidget(QLabel("Value:", self))
         spin_row.addWidget(self.spinbox)
         spin_row.addStretch()
         layout.addLayout(spin_row)
 
-        # Wire slider ↔ spinbox
+        # Sync slider ↔ spinbox
         self.slider.valueChanged.connect(self.spinbox.setValue)
         self.spinbox.valueChanged.connect(self.slider.setValue)
 
-        # Voice status
+        # Voice status + hint
+        color = "#00FF00" if "Listening" in voice_status_text else "#888888"
         self.voice_status = QLabel(f"🎤 {voice_status_text}")
-        color = "#00FF00" if "Listening" in voice_status_text else "#888"
-        self.voice_status.setStyleSheet(f"color: {color}; font-size: 8pt;")
+        self.voice_status.setStyleSheet(f"color:{color}; font-size:9pt;")
         layout.addWidget(self.voice_status)
 
-        # Commands hint
-        hint = QLabel(
-            'Commands: "On" / "Active" / "Activate" / "Enable"\n'
-            '                  "Off" / "Inactive" / "Deactivate" / "Disable"'
-        )
-        hint.setStyleSheet("color: #888; font-size: 8pt;")
+        hint = QLabel('Commands: "On" / "Active" / "Activate" / "Enable"\n'
+                      '                  "Off" / "Inactive" / "Deactivate" / "Disable"')
+        hint.setStyleSheet("color:#888888; font-size:8pt;")
         layout.addWidget(hint)
 
-        layout.addWidget(self._sep())
         layout.addStretch()
+        layout.addWidget(self._sep())
 
-        scroll.setWidget(content)
-        outer.addWidget(scroll)
-
-        # ── Sticky button bar ────────────────────────────────────────────
-        btn_bar = QWidget()
-        btn_bar.setStyleSheet("background-color: #1e1e1e; border-top: 1px solid #444;")
-        btn_layout = QHBoxLayout(btn_bar)
-        btn_layout.setContentsMargins(15, 8, 15, 8)
-        btn_layout.setSpacing(10)
-
+        # Buttons
+        btn_row = QHBoxLayout()
         save_btn = QPushButton("✔ Apply & Save")
         save_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         save_btn.setFixedHeight(38)
         save_btn.setStyleSheet("""
-            QPushButton { background: #00BFFF; color: black; border-radius: 5px; }
-            QPushButton:hover { background: #33CCFF; }
+            QPushButton { background:#00BFFF; color:black; border-radius:5px; border:none; }
+            QPushButton:hover { background:#33CCFF; }
         """)
         save_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(save_btn)
+        btn_row.addWidget(save_btn)
 
         close_btn = QPushButton("✖ Close")
         close_btn.setFixedHeight(38)
         close_btn.setStyleSheet("""
-            QPushButton { background: #444; color: white; border-radius: 5px; }
-            QPushButton:hover { background: #555; }
+            QPushButton { background:#444444; color:white; border-radius:5px; border:none; }
+            QPushButton:hover { background:#555555; }
         """)
         close_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(close_btn)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
 
-        outer.addWidget(btn_bar)
-
-    # ── helpers ──────────────────────────────────────────────────────────────
     def _sep(self):
-        lbl = QLabel("━" * 40)
-        lbl.setStyleSheet("color: #444;")
+        lbl = QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lbl.setStyleSheet("color: #444444;")
         return lbl
 
-    def _section_label(self, text):
-        lbl = QLabel(text)
-        lbl.setStyleSheet("color: #CCCCCC; font-size: 9pt;")
-        return lbl
+    def _lbl(self, text):
+        l = QLabel(text)
+        l.setStyleSheet("color: #CCCCCC; font-size: 9pt;")
+        return l
 
     def on_voice_toggled(self):
-        enabled     = self.voice_check.isChecked()
-        mic_index   = self.mic_combo.currentIndex()
-        actual_idx  = mic_index - 1 if mic_index > 0 else None
+        enabled    = self.voice_check.isChecked()
+        mic_index  = self.mic_combo.currentIndex()
+        actual_idx = mic_index - 1 if mic_index > 0 else None
         if enabled:
             self.voice_status.setText("🎤 Starting...")
-            self.voice_status.setStyleSheet("color: #FF8800; font-size: 8pt;")
+            self.voice_status.setStyleSheet("color:#FF8800; font-size:9pt;")
             self.parent_window.start_voice(actual_idx, self.spinbox.value())
         else:
             self.voice_status.setText("🎤 Disabled")
-            self.voice_status.setStyleSheet("color: #888; font-size: 8pt;")
+            self.voice_status.setStyleSheet("color:#888888; font-size:9pt;")
             self.parent_window.stop_voice()
 
     def update_voice_status(self, status):
@@ -549,8 +499,8 @@ class SettingsDialog(QDialog):
         elif "Heard" in status:
             color = "#00BFFF"
         else:
-            color = "#888"
-        self.voice_status.setStyleSheet(f"color: {color}; font-size: 8pt;")
+            color = "#888888"
+        self.voice_status.setStyleSheet(f"color:{color}; font-size:9pt;")
 
     def get_values(self):
         mic_index  = self.mic_combo.currentIndex()
@@ -604,7 +554,6 @@ class MainWindow(QMainWindow):
         if self.voice_enabled:
             self.start_voice(self.mic_index, self.energy_threshold)
 
-    # ── Icon ──────────────────────────────────────────────────────────────────
     def set_window_icon(self):
         icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
@@ -614,7 +563,6 @@ class MainWindow(QMainWindow):
             px.fill(QColor(0, 255, 0))
             self.setWindowIcon(QIcon(px))
 
-    # ── Settings persistence ──────────────────────────────────────────────────
     def load_settings(self):
         try:
             if os.path.exists(self.settings_file):
@@ -663,7 +611,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # ── Hotkey ────────────────────────────────────────────────────────────────
     def register_hotkey(self, key):
         try:
             if self.current_hotkey:
@@ -675,7 +622,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # ── Voice ─────────────────────────────────────────────────────────────────
     def start_voice(self, mic_index=None, energy_threshold=1500):
         if not SPEECH_AVAILABLE:
             return
@@ -695,7 +641,7 @@ class MainWindow(QMainWindow):
         self.voice_label.setStyleSheet("color: #888888; font-size: 8pt;")
 
     def on_voice_command(self, command):
-        if command == 'on'  and not self.macro_thread.enabled:
+        if command == 'on' and not self.macro_thread.enabled:
             self.macro_thread.enabled = True
         elif command == 'off' and self.macro_thread.enabled:
             self.macro_thread.enabled = False
@@ -716,7 +662,6 @@ class MainWindow(QMainWindow):
         if self.settings_dialog:
             self.settings_dialog.update_voice_status(status)
 
-    # ── Settings dialog ───────────────────────────────────────────────────────
     def show_settings(self):
         voice_status = (
             "Listening..."
@@ -756,43 +701,41 @@ class MainWindow(QMainWindow):
 
         self.settings_dialog = None
 
-    # ── UI ────────────────────────────────────────────────────────────────────
+    # ── UI — original style restored exactly ──────────────────────────────────
     def init_ui(self):
         self.setWindowTitle("Peak & Aim Assistant v1.0")
-        self.setFixedSize(420, 690)
+        self.setFixedSize(400, 680)
 
         palette = QPalette()
         palette.setColor(QPalette.Window, QColor(30, 30, 30))
         palette.setColor(QPalette.WindowText, Qt.white)
         self.setPalette(palette)
 
-        central = QWidget()
-        self.setCentralWidget(central)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
 
-        layout = QVBoxLayout(central)
+        layout = QVBoxLayout()
         layout.setSpacing(8)
-        layout.setContentsMargins(15, 8, 15, 8)   # FIX: equal left/right margins
+        layout.setContentsMargins(0, 5, 0, 0)
 
-        # ── Logo + title ──────────────────────────────────────────────────
-        title_row = QHBoxLayout()
-        title_row.addStretch()
+        # Title — exactly as original
+        title_container = QHBoxLayout()
+        title_container.addStretch()
         logo_path = resource_path("logo.png")
         if os.path.exists(logo_path):
-            logo_lbl = QLabel()
-            logo_lbl.setPixmap(
-                QPixmap(logo_path).scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            )
-            title_row.addWidget(logo_lbl)
-
-        title_txt = QVBoxLayout()
-        title_txt.setSpacing(0)
-        t = QLabel("Peak & Aim Assistant")
-        t.setFont(QFont("Segoe UI", 15, QFont.Bold))
-        t.setStyleSheet("color: white;")
-        title_txt.addWidget(t)
-        title_row.addLayout(title_txt)
-        title_row.addStretch()
-        layout.addLayout(title_row)
+            logo_label = QLabel()
+            logo_pixmap = QPixmap(logo_path)
+            logo_label.setPixmap(logo_pixmap.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            title_container.addWidget(logo_label)
+        title_text_layout = QVBoxLayout()
+        title_text_layout.setSpacing(0)
+        title = QLabel("Peak & Aim Assistant")
+        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        title.setStyleSheet("color: white;")
+        title_text_layout.addWidget(title)
+        title_container.addLayout(title_text_layout)
+        title_container.addStretch()
+        layout.addLayout(title_container)
 
         creator = QLabel("Created by MAAKTHUNDER")
         creator.setFont(QFont("Segoe UI", 9))
@@ -802,23 +745,23 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self._sep())
 
-        # ── Status ────────────────────────────────────────────────────────
-        status_row = QHBoxLayout()
-        self.status_dot  = QLabel("●")
+        # Status
+        status_layout = QHBoxLayout()
+        self.status_dot = QLabel("●")
         self.status_dot.setFont(QFont("Segoe UI", 14))
         self.status_dot.setStyleSheet("color: #FF0000;")
         self.status_text = QLabel("INACTIVE")
         self.status_text.setFont(QFont("Segoe UI", 10))
         self.status_text.setStyleSheet("color: #FF0000;")
-        status_row.addStretch()
-        status_row.addWidget(self.status_dot)
-        status_row.addWidget(self.status_text)
-        status_row.addStretch()
-        layout.addLayout(status_row)
+        status_layout.addStretch()
+        status_layout.addWidget(self.status_dot)
+        status_layout.addWidget(self.status_text)
+        status_layout.addStretch()
+        layout.addLayout(status_layout)
 
         layout.addWidget(self._sep())
 
-        # ── Buttons ───────────────────────────────────────────────────────
+        # Buttons
         self.toggle_btn = QPushButton(f"Toggle Macro ({self.macro_hotkey})")
         self.toggle_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         self.toggle_btn.setFixedHeight(40)
@@ -833,24 +776,28 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self._sep())
 
-        # ── Overlay position ──────────────────────────────────────────────
-        pos_lbl = QLabel("Overlay Position:")
-        pos_lbl.setStyleSheet("color: #AAAAAA;")
-        layout.addWidget(pos_lbl)
+        # Overlay position
+        pos_label = QLabel("Overlay Position:")
+        pos_label.setStyleSheet("color: #AAAAAA;")
+        layout.addWidget(pos_label)
 
-        pos_row = QHBoxLayout()
-        pos_row.addWidget(self._wlabel("X:"))
+        pos_layout = QHBoxLayout()
+        x_label = QLabel("X:")
+        x_label.setStyleSheet("color: white;")
+        pos_layout.addWidget(x_label)
         self.x_input = QLineEdit(str(self.overlay_x))
-        self.x_input.setFixedWidth(75)
-        pos_row.addWidget(self.x_input)
-        pos_row.addWidget(self._wlabel("Y:"))
+        self.x_input.setFixedWidth(80)
+        pos_layout.addWidget(self.x_input)
+        y_label = QLabel("Y:")
+        y_label.setStyleSheet("color: white;")
+        pos_layout.addWidget(y_label)
         self.y_input = QLineEdit(str(self.overlay_y))
-        self.y_input.setFixedWidth(75)
-        pos_row.addWidget(self.y_input)
+        self.y_input.setFixedWidth(80)
+        pos_layout.addWidget(self.y_input)
         apply_btn = QPushButton("Apply & Save")
         apply_btn.clicked.connect(self.apply_position)
-        pos_row.addWidget(apply_btn)
-        layout.addLayout(pos_row)
+        pos_layout.addWidget(apply_btn)
+        layout.addLayout(pos_layout)
 
         self.bg_check = QCheckBox("Show Background (Semi-transparent)")
         self.bg_check.setStyleSheet("color: white;")
@@ -868,36 +815,59 @@ class MainWindow(QMainWindow):
         self.voice_label.setStyleSheet("color: #888888; font-size: 8pt;")
         layout.addWidget(self.voice_label)
 
-        tip = QLabel("Tip: Scope auto-resets after 30s inactivity")
-        tip.setStyleSheet("color: #00FF00; font-size: 8pt;")
-        layout.addWidget(tip)
+        tip_label = QLabel("Tip: Scope auto-resets after 30s inactivity")
+        tip_label.setStyleSheet("color: #00FF00; font-size: 8pt;")
+        layout.addWidget(tip_label)
 
         layout.addWidget(self._sep())
 
-        # ── How it Works ──────────────────────────────────────────────────
-        how = QLabel("How it Works:")
-        how.setStyleSheet("color: white; font-weight: bold;")
-        layout.addWidget(how)
+        # How it Works
+        how_label = QLabel("How it Works:")
+        how_label.setStyleSheet("color: white; font-weight: bold;")
+        layout.addWidget(how_label)
 
-        self.hotkey_info = QLabel(f"{self.macro_hotkey} - Toggle Macro ON/OFF (Default)")
-        self.hotkey_info.setStyleSheet("color: #CCCCCC;")
-        layout.addWidget(self.hotkey_info)
+        hotkey_text = QLabel(f"{self.macro_hotkey} - Toggle Macro ON/OFF (Default)")
+        hotkey_text.setStyleSheet("color: #CCCCCC;")
+        layout.addWidget(hotkey_text)
 
-        peak_info = QLabel("Q/E - Peak with Auto-Aim")
-        peak_info.setStyleSheet("color: #CCCCCC;")
-        layout.addWidget(peak_info)
+        layout.addWidget(QLabel(""))
+
+        peak_text = QLabel("Q/E - Peak with Auto-Aim")
+        peak_text.setStyleSheet("color: #CCCCCC;")
+        layout.addWidget(peak_text)
 
         layout.addWidget(self._sep())
 
-        # ── Social links ──────────────────────────────────────────────────
-        layout.addLayout(self._social_row(
-            "youtube.png", "WWW.YOUTUBE.COM/@MAAKTHUNDER",
-            "https://www.youtube.com/@MAAKTHUNDER"
-        ))
-        layout.addLayout(self._social_row(
-            "tiktok.png", "WWW.TIKTOK.COM/@MAAKTHUNDER",
-            "https://www.tiktok.com/@maakthunder"
-        ))
+        # Social links
+        youtube_layout = QHBoxLayout()
+        youtube_layout.setSpacing(10)
+        yt_icon_path = resource_path("youtube.png")
+        if os.path.exists(yt_icon_path):
+            yt_icon = QLabel()
+            yt_pixmap = QPixmap(yt_icon_path)
+            yt_icon.setPixmap(yt_pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            youtube_layout.addWidget(yt_icon)
+        yt_link = ClickableLabel("WWW.YOUTUBE.COM/@MAAKTHUNDER", "https://www.youtube.com/@MAAKTHUNDER")
+        yt_link.setFont(QFont("Segoe UI", 10))
+        yt_link.setStyleSheet("color: #00BFFF; text-decoration: underline;")
+        youtube_layout.addWidget(yt_link)
+        youtube_layout.addStretch()
+        layout.addLayout(youtube_layout)
+
+        tiktok_layout = QHBoxLayout()
+        tiktok_layout.setSpacing(10)
+        tt_icon_path = resource_path("tiktok.png")
+        if os.path.exists(tt_icon_path):
+            tt_icon = QLabel()
+            tt_pixmap = QPixmap(tt_icon_path)
+            tt_icon.setPixmap(tt_pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            tiktok_layout.addWidget(tt_icon)
+        tt_link = ClickableLabel("WWW.TIKTOK.COM/@MAAKTHUNDER", "https://www.tiktok.com/@maakthunder")
+        tt_link.setFont(QFont("Segoe UI", 10))
+        tt_link.setStyleSheet("color: #00BFFF; text-decoration: underline;")
+        tiktok_layout.addWidget(tt_link)
+        tiktok_layout.addStretch()
+        layout.addLayout(tiktok_layout)
 
         layout.addWidget(self._sep())
 
@@ -906,36 +876,18 @@ class MainWindow(QMainWindow):
         footer.setAlignment(Qt.AlignCenter)
         layout.addWidget(footer)
 
+        central_widget.setLayout(layout)
+
         if self.is_first_run or not self.start_minimized:
             self.show()
         else:
             self.hide()
 
-    # ── helpers ──────────────────────────────────────────────────────────────
     def _sep(self):
-        lbl = QLabel("━" * 44)
-        lbl.setStyleSheet("color: #333;")
-        return lbl
-
-    def _wlabel(self, text):
-        lbl = QLabel(text)
+        """Original white ━━━ separator — exactly as in original code."""
+        lbl = QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         lbl.setStyleSheet("color: white;")
         return lbl
-
-    def _social_row(self, icon_file, link_text, url):
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        icon_path = resource_path(icon_file)
-        if os.path.exists(icon_path):
-            ic = QLabel()
-            ic.setPixmap(QPixmap(icon_path).scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            row.addWidget(ic)
-        lnk = ClickableLabel(link_text, url)
-        lnk.setFont(QFont("Segoe UI", 9))
-        lnk.setStyleSheet("color: #00BFFF; text-decoration: underline;")
-        row.addWidget(lnk)
-        row.addStretch()
-        return row
 
     # ── Tray ──────────────────────────────────────────────────────────────────
     def setup_tray(self):
@@ -948,13 +900,18 @@ class MainWindow(QMainWindow):
             px = QPixmap(16, 16)
             px.fill(QColor(0, 255, 0))
             self.tray_icon.setIcon(QIcon(px))
-
-        menu = QMenu()
-        menu.addAction(QAction("Show GUI",                    self, triggered=self.show))
-        menu.addAction(QAction(f"Toggle Macro ({self.macro_hotkey})", self, triggered=self.toggle_macro))
-        menu.addSeparator()
-        menu.addAction(QAction("Exit", self, triggered=self.quit_app))
-        self.tray_icon.setContextMenu(menu)
+        tray_menu = QMenu()
+        show_action = QAction("Show GUI", self)
+        show_action.triggered.connect(self.show)
+        tray_menu.addAction(show_action)
+        toggle_action = QAction(f"Toggle Macro ({self.macro_hotkey})", self)
+        toggle_action.triggered.connect(self.toggle_macro)
+        tray_menu.addAction(toggle_action)
+        tray_menu.addSeparator()
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.quit_app)
+        tray_menu.addAction(exit_action)
+        self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.tray_clicked)
         self.tray_icon.show()
 
@@ -983,7 +940,6 @@ class MainWindow(QMainWindow):
         self.status_text.setStyleSheet(f"color: {color};")
         self.status_text.setText(text)
 
-    # ── Actions ───────────────────────────────────────────────────────────────
     def toggle_macro(self):
         self.macro_thread.enabled = not self.macro_thread.enabled
 
@@ -1032,7 +988,6 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-
     shared_mem = QSharedMemory("PeakAimAssistantUniqueName")
     if not shared_mem.create(1):
         msg = QMessageBox()
@@ -1042,7 +997,6 @@ def main():
         msg.setInformativeText("Check your system tray.")
         msg.exec_()
         sys.exit(0)
-
     window = MainWindow()
     sys.exit(app.exec_())
 
