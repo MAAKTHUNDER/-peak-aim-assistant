@@ -26,6 +26,12 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
+    - name: Download Vosk Model
+      run: |
+        curl -L -o vosk-model.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+        Expand-Archive -Path vosk-model.zip -DestinationPath .
+        Remove-Item vosk-model.zip
+    
     - name: Build EXE
       shell: pwsh
       run: |
@@ -37,6 +43,7 @@ jobs:
           --add-data "youtube.png;." `
           --add-data "tiktok.png;." `
           --add-data "icon.ico;." `
+          --add-data "vosk-model-small-en-us-0.15;vosk-model-small-en-us-0.15" `
           --name=PeakAimAssistant-Vosk `
           peak_aim_assistant.py
     
@@ -44,5 +51,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: PeakAimAssistant-Vosk-Windows
-        path: dist/PeakAimAssistant-Vosk.exe
+        path: dist/PeakAimAssistant 2.0.0.exe
         retention-days: 90
