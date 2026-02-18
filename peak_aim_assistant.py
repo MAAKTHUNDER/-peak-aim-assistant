@@ -77,28 +77,33 @@ def get_microphone_list():
     return mic_list
 
 def download_vosk_model():
-    """Download Vosk model if not present"""
-    model_dir = "vosk-model-small-en-us-0.15"
-    if os.path.exists(model_dir):
-        return model_dir
+    """Get Vosk model path - check bundled location first"""
+    model_name = "vosk-model-small-en-us-0.15"
     
+    # First check if bundled with EXE (PyInstaller temp folder)
+    bundled_path = resource_path(model_name)
+    if os.path.exists(bundled_path):
+        return bundled_path
+    
+    # Check current directory
+    if os.path.exists(model_name):
+        return model_name
+    
+    # Download if not found
     model_url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
     zip_path = "vosk-model.zip"
     
     try:
-        # Download with progress
         print("Downloading Vosk model...")
         urllib.request.urlretrieve(model_url, zip_path)
         
-        # Extract
         print("Extracting model...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(".")
         
-        # Cleanup
         os.remove(zip_path)
         print("Model ready!")
-        return model_dir
+        return model_name
     except Exception as e:
         print(f"Model download failed: {e}")
         return None
