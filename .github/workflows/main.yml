@@ -21,23 +21,30 @@ jobs:
     - name: Upgrade pip
       run: python -m pip install --upgrade pip
     
-    - name: Install Python dependencies
+    - name: Install dependencies
       run: |
         pip install -r requirements.txt
         pip install pyinstaller
     
+    # -----------------------------
+    # Download Vosk Model
+    # -----------------------------
     - name: Download Vosk Model
+      shell: pwsh
       run: |
         curl -L -o vosk-model.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
         Expand-Archive -Path vosk-model.zip -DestinationPath .
         Remove-Item vosk-model.zip
     
+    # -----------------------------
+    # BUILD EXE (FIXED)
+    # -----------------------------
     - name: Build EXE
       shell: pwsh
       run: |
         pyinstaller --onefile --windowed `
+          --collect-all vosk `
           --hidden-import=pyaudio `
-          --hidden-import=vosk `
           --icon=icon.ico `
           --add-data "logo.png;." `
           --add-data "youtube.png;." `
@@ -47,6 +54,9 @@ jobs:
           --name=PeakAimAssistant-Vosk `
           peak_aim_assistant.py
     
+    # -----------------------------
+    # Upload artifact
+    # -----------------------------
     - name: Upload EXE
       uses: actions/upload-artifact@v4
       with:
