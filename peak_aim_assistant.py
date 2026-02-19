@@ -77,16 +77,13 @@ def download_vosk_model():
     """Get Vosk model path - check bundled location first"""
     model_name = "vosk-model-small-en-us-0.15"
     
-    # First check if bundled with EXE
     bundled_path = resource_path(model_name)
     if os.path.exists(bundled_path):
         return bundled_path
     
-    # Check current directory
     if os.path.exists(model_name):
         return model_name
     
-    # Download if not found
     model_url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
     zip_path = "vosk-model.zip"
     
@@ -128,8 +125,8 @@ class VoiceThread(QThread):
             self.recognizer = KaldiRecognizer(self.model, 16000)
             self.recognizer.SetWords(True)
             
-            # FORCE only these words - nothing else!
-            self.recognizer.SetGrammar('["on", "off", "active", "inactive", "turn", "toggle"]')
+            # Only 5 words - removed "toggle"
+            self.recognizer.SetGrammar('["on", "off", "active", "inactive", "turn"]')
             
             return True
         except Exception as e:
@@ -178,7 +175,6 @@ class VoiceThread(QThread):
                     
                     data = stream.read(2000, exception_on_overflow=False)
                     
-                    # Check BOTH final and partial results
                     if self.recognizer.AcceptWaveform(data):
                         result = json.loads(self.recognizer.Result())
                         text = result.get('text', '').lower().strip()
@@ -186,7 +182,6 @@ class VoiceThread(QThread):
                         if text:
                             self.process_command(text)
                     else:
-                        # Also check partial results
                         partial = json.loads(self.recognizer.PartialResult())
                         text = partial.get('partial', '').lower().strip()
                         
@@ -204,32 +199,26 @@ class VoiceThread(QThread):
             self.status_update.emit(f"Audio Error: {str(e)[:40]}")
     
     def process_command(self, text):
-        """Process command instantly when heard"""
-        # Check for TOGGLE first
-        if 'toggle' in text:
-            self.command_received.emit('toggle')
-            self.status_update.emit(f"→ TOGGLE")
-            return
-        
-        # Check for TURN OFF (before checking just "off")
+        """Process command - check TURN OFF and TURN ON as phrases"""
+        # Check for TURN OFF first (must match both words)
         if 'turn' in text and 'off' in text:
             self.command_received.emit('off')
             self.status_update.emit(f"→ OFF")
             return
         
-        # Check for TURN ON (before checking just "on")
+        # Check for TURN ON (must match both words)
         if 'turn' in text and 'on' in text:
             self.command_received.emit('on')
             self.status_update.emit(f"→ ON")
             return
         
-        # Check for OFF
+        # Check for OFF or INACTIVE (single words)
         if 'off' in text or 'inactive' in text:
             self.command_received.emit('off')
             self.status_update.emit(f"→ OFF")
             return
         
-        # Check for ON
+        # Check for ON or ACTIVE (single words)
         if 'on' in text or 'active' in text:
             self.command_received.emit('on')
             self.status_update.emit(f"→ ON")
@@ -381,7 +370,7 @@ class SettingsDialog(QDialog):
                  voice_enabled, current_mic, voice_status_text):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedSize(480, 400)  # WIDER
+        self.setFixedSize(480, 400)
         self.parent_window = parent
         
         palette = QPalette()
@@ -458,7 +447,7 @@ class SettingsDialog(QDialog):
         layout.addLayout(mic_layout)
         
         # Note
-        note = QLabel("Note: Grammar limited to 6 words")
+        note = QLabel("Note: Grammar limited to 5 words")
         note.setStyleSheet("color: #00FF00; font-size: 8pt;")
         layout.addWidget(note)
         
@@ -470,20 +459,43 @@ class SettingsDialog(QDialog):
         
         # Commands hint
         hint = QLabel('Say: "On" / "Off" / "Active" / "Inactive"\n'
-                      '        "Turn On" / "Turn Off" / "Toggle"')
+                      '        "Turn On" / "Turn Off"')
         hint.setStyleSheet("color: #888888; font-size: 8pt;")
         layout.addWidget(hint)
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
         button_layout = QHBoxLayout()
-        save_btn = QPushButton("Apply & Save")
+        save_btn = QPushButton("✔ Apply & Save")
         save_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         save_btn.setFixedHeight(35)
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0099CC;
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #00BBEE;
+            }
+        """)
         save_btn.clicked.connect(self.accept)
         button_layout.addWidget(save_btn)
-        close_btn = QPushButton("Close")
+        
+        close_btn = QPushButton("✖ Close")
         close_btn.setFixedHeight(35)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #444444;
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #555555;
+            }
+        """)
         close_btn.clicked.connect(self.reject)
         button_layout.addWidget(close_btn)
         layout.addLayout(button_layout)
@@ -651,9 +663,8 @@ class MainWindow(QMainWindow):
         self.voice_label.setStyleSheet("color: #888888; font-size: 8pt;")
     
     def on_voice_command(self, command):
-        if command == 'toggle':
-            self.macro_thread.enabled = not self.macro_thread.enabled
-        elif command == 'on':
+        # Simple on/off only - no toggle
+        if command == 'on':
             if not self.macro_thread.enabled:
                 self.macro_thread.enabled = True
         elif command == 'off':
@@ -779,19 +790,19 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # BLUE BUTTONS
+        # BUTTONS - darker blue like image 2
         self.toggle_btn = QPushButton(f"Toggle Macro ({self.macro_hotkey})")
         self.toggle_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         self.toggle_btn.setFixedHeight(40)
         self.toggle_btn.setStyleSheet("""
             QPushButton {
-                background-color: #00BFFF;
+                background-color: #0099CC;
                 color: white;
                 border: none;
                 border-radius: 6px;
             }
             QPushButton:hover {
-                background-color: #33CCFF;
+                background-color: #00BBEE;
             }
         """)
         self.toggle_btn.clicked.connect(self.toggle_macro)
@@ -802,13 +813,13 @@ class MainWindow(QMainWindow):
         settings_btn.setFixedHeight(40)
         settings_btn.setStyleSheet("""
             QPushButton {
-                background-color: #00BFFF;
+                background-color: #0099CC;
                 color: white;
                 border: none;
                 border-radius: 6px;
             }
             QPushButton:hover {
-                background-color: #33CCFF;
+                background-color: #00BBEE;
             }
         """)
         settings_btn.clicked.connect(self.show_settings)
@@ -869,7 +880,7 @@ class MainWindow(QMainWindow):
         hotkey_text = QLabel(f"{self.macro_hotkey} - Toggle Macro ON/OFF (Default)")
         hotkey_text.setStyleSheet("color: #CCCCCC;")
         layout.addWidget(hotkey_text)
-        
+      
         peak_text = QLabel("Q/E - Peak with Auto-Aim")
         peak_text.setStyleSheet("color: #CCCCCC;")
         layout.addWidget(peak_text)
