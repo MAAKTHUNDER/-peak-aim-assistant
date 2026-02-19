@@ -113,6 +113,7 @@ class VoiceThread(QThread):
         self.model = None
         self.recognizer = None
         self.mic_index = mic_index
+        self.last_command_time = 0
     
     def initialize(self):
         try:
@@ -125,7 +126,7 @@ class VoiceThread(QThread):
             self.recognizer = KaldiRecognizer(self.model, 16000)
             self.recognizer.SetWords(True)
             
-            # Only 5 words - removed "toggle"
+            # Grammar limited to 5 words
             self.recognizer.SetGrammar('["on", "off", "active", "inactive", "turn"]')
             
             return True
@@ -175,18 +176,13 @@ class VoiceThread(QThread):
                     
                     data = stream.read(2000, exception_on_overflow=False)
                     
+                    # Only process FINAL results (not partial)
                     if self.recognizer.AcceptWaveform(data):
                         result = json.loads(self.recognizer.Result())
-                        text = result.get('text', '').lower().strip()
                         
-                        if text:
-                            self.process_command(text)
-                    else:
-                        partial = json.loads(self.recognizer.PartialResult())
-                        text = partial.get('partial', '').lower().strip()
-                        
-                        if text:
-                            self.process_command(text)
+                        # CHECK CONFIDENCE - STRICT 90%+ ONLY
+                        if 'result' in result and len(result['result']) > 0:
+                            self.process_with_confidence(result['result'])
                 
                 except Exception:
                     continue
@@ -198,30 +194,53 @@ class VoiceThread(QThread):
         except Exception as e:
             self.status_update.emit(f"Audio Error: {str(e)[:40]}")
     
-    def process_command(self, text):
-        """Process command - check TURN OFF and TURN ON as phrases"""
-        # Check for TURN OFF first (must match both words)
-        if 'turn' in text and 'off' in text:
+    def process_with_confidence(self, words):
+        """Process ONLY if confidence is 90%+ for command words"""
+        # Prevent rapid repeated commands (debounce)
+        if time.time() - self.last_command_time < 0.5:
+            return
+        
+        # Check each word and its confidence
+        detected_words = {}
+        for word_info in words:
+            word = word_info.get('word', '').lower()
+            confidence = word_info.get('conf', 0)
+            
+            # STRICT: Only 90%+ confidence accepted
+            if confidence >= 0.90:
+                detected_words[word] = confidence
+        
+        # Now check for commands with high confidence words only
+        
+        # Check TURN OFF (both words must be 90%+)
+        if 'turn' in detected_words and 'off' in detected_words:
+            avg_conf = (detected_words['turn'] + detected_words['off']) / 2
             self.command_received.emit('off')
-            self.status_update.emit(f"→ OFF")
+            self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
+            self.last_command_time = time.time()
             return
         
-        # Check for TURN ON (must match both words)
-        if 'turn' in text and 'on' in text:
+        # Check TURN ON (both words must be 90%+)
+        if 'turn' in detected_words and 'on' in detected_words:
+            avg_conf = (detected_words['turn'] + detected_words['on']) / 2
             self.command_received.emit('on')
-            self.status_update.emit(f"→ ON")
+            self.status_update.emit(f"→ ON ({int(avg_conf*100)}%)")
+            self.last_command_time = time.time()
             return
         
-        # Check for OFF or INACTIVE (single words)
-        if 'off' in text or 'inactive' in text:
+        # Check single word commands (90%+ confidence)
+        if 'off' in detected_words or 'inactive' in detected_words:
+            conf = detected_words.get('off', detected_words.get('inactive', 0))
             self.command_received.emit('off')
-            self.status_update.emit(f"→ OFF")
+            self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
+            self.last_command_time = time.time()
             return
         
-        # Check for ON or ACTIVE (single words)
-        if 'on' in text or 'active' in text:
+        if 'on' in detected_words or 'active' in detected_words:
+            conf = detected_words.get('on', detected_words.get('active', 0))
             self.command_received.emit('on')
-            self.status_update.emit(f"→ ON")
+            self.status_update.emit(f"→ ON ({int(conf*100)}%)")
+            self.last_command_time = time.time()
             return
     
     def stop(self):
@@ -370,7 +389,7 @@ class SettingsDialog(QDialog):
                  voice_enabled, current_mic, voice_status_text):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedSize(480, 400)
+        self.setFixedSize(480, 420)
         self.parent_window = parent
         
         palette = QPalette()
@@ -446,8 +465,8 @@ class SettingsDialog(QDialog):
         mic_layout.addWidget(self.mic_combo)
         layout.addLayout(mic_layout)
         
-        # Note
-        note = QLabel("Note: Grammar limited to 5 words")
+        # Note - Updated
+        note = QLabel("Note: 90%+ confidence required (Strict)")
         note.setStyleSheet("color: #00FF00; font-size: 8pt;")
         layout.addWidget(note)
         
@@ -458,8 +477,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.voice_status)
         
         # Commands hint
-        hint = QLabel('Say: "On" / "Off" / "Active" / "Inactive"\n'
-                      '        "Turn On" / "Turn Off"')
+        hint = QLabel('Say clearly: "On" / "Off" / "Active" / "Inactive"\n'
+                      '                     "Turn On" / "Turn Off"')
         hint.setStyleSheet("color: #888888; font-size: 8pt;")
         layout.addWidget(hint)
         
@@ -521,7 +540,7 @@ class SettingsDialog(QDialog):
             self.voice_status.setStyleSheet("color: #00FF00; font-size: 8pt;")
         elif "Error" in status or "not" in status.lower() or "failed" in status.lower():
             self.voice_status.setStyleSheet("color: #FF0000; font-size: 8pt;")
-        elif "→" in status:
+        elif "→" in status or "%" in status:
             self.voice_status.setStyleSheet("color: #00BFFF; font-size: 8pt;")
         else:
             self.voice_status.setStyleSheet("color: #888888; font-size: 8pt;")
@@ -663,7 +682,6 @@ class MainWindow(QMainWindow):
         self.voice_label.setStyleSheet("color: #888888; font-size: 8pt;")
     
     def on_voice_command(self, command):
-        # Simple on/off only - no toggle
         if command == 'on':
             if not self.macro_thread.enabled:
                 self.macro_thread.enabled = True
@@ -675,7 +693,7 @@ class MainWindow(QMainWindow):
         if "Listening" in status:
             self.voice_label.setText("🎤 Voice: Listening...")
             self.voice_label.setStyleSheet("color: #00FF00; font-size: 8pt;")
-        elif "→" in status:
+        elif "→" in status or "%" in status:
             self.voice_label.setText(f"🎤 {status}")
             self.voice_label.setStyleSheet("color: #00BFFF; font-size: 8pt;")
         elif "Error" in status or "not" in status.lower() or "failed" in status.lower():
@@ -790,7 +808,7 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # BUTTONS - darker blue like image 2
+        # Buttons
         self.toggle_btn = QPushButton(f"Toggle Macro ({self.macro_hotkey})")
         self.toggle_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         self.toggle_btn.setFixedHeight(40)
@@ -880,7 +898,7 @@ class MainWindow(QMainWindow):
         hotkey_text = QLabel(f"{self.macro_hotkey} - Toggle Macro ON/OFF (Default)")
         hotkey_text.setStyleSheet("color: #CCCCCC;")
         layout.addWidget(hotkey_text)
-      
+        
         peak_text = QLabel("Q/E - Peak with Auto-Aim")
         peak_text.setStyleSheet("color: #CCCCCC;")
         layout.addWidget(peak_text)
