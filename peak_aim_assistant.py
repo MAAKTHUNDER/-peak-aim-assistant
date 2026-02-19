@@ -8,7 +8,7 @@ import urllib.request
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QLineEdit, 
                              QCheckBox, QSystemTrayIcon, QMenu, QAction, 
-                             QMessageBox, QComboBox, QDialog, QSlider, QProgressDialog)
+                             QMessageBox, QComboBox, QDialog)
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSharedMemory
 from PyQt5.QtGui import QIcon, QFont, QPalette, QColor, QPixmap, QCursor
 import keyboard
@@ -27,9 +27,6 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
-
-ON_COMMANDS = ['on', 'active', 'turn on']
-OFF_COMMANDS = ['off', 'inactive', 'turn off']
 
 MACRO_HOTKEYS = [
     'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
@@ -80,7 +77,7 @@ def download_vosk_model():
     """Get Vosk model path - check bundled location first"""
     model_name = "vosk-model-small-en-us-0.15"
     
-    # First check if bundled with EXE (PyInstaller temp folder)
+    # First check if bundled with EXE
     bundled_path = resource_path(model_name)
     if os.path.exists(bundled_path):
         return bundled_path
@@ -111,20 +108,17 @@ def download_vosk_model():
 class VoiceThread(QThread):
     command_received = pyqtSignal(str)
     status_update = pyqtSignal(str)
-    model_download_progress = pyqtSignal(int)
     
-    def __init__(self, mic_index=None, energy_threshold=1500):
+    def __init__(self, mic_index=None):
         super().__init__()
         self.running = False
         self.enabled = False
         self.model = None
         self.recognizer = None
         self.mic_index = mic_index
-        self.energy_threshold = energy_threshold
     
     def initialize(self):
         try:
-            # Check if model exists, download if not
             model_dir = download_vosk_model()
             if not model_dir:
                 self.status_update.emit("Model download failed!")
@@ -133,6 +127,9 @@ class VoiceThread(QThread):
             self.model = Model(model_dir)
             self.recognizer = KaldiRecognizer(self.model, 16000)
             self.recognizer.SetWords(True)
+            
+            # FORCE only these 4 words - nothing else!
+            self.recognizer.SetGrammar('["on", "off", "active", "inactive"]')
             
             return True
         except Exception as e:
@@ -158,7 +155,7 @@ class VoiceThread(QThread):
                     rate=16000,
                     input=True,
                     input_device_index=self.mic_index,
-                    frames_per_buffer=4000
+                    frames_per_buffer=2000
                 )
             else:
                 stream = p.open(
@@ -166,7 +163,7 @@ class VoiceThread(QThread):
                     channels=1,
                     rate=16000,
                     input=True,
-                    frames_per_buffer=4000
+                    frames_per_buffer=2000
                 )
             
             stream.start_stream()
@@ -176,36 +173,25 @@ class VoiceThread(QThread):
             while self.running:
                 try:
                     if not self.enabled:
-                        time.sleep(0.1)
+                        time.sleep(0.05)
                         continue
                     
-                    data = stream.read(4000, exception_on_overflow=False)
+                    data = stream.read(2000, exception_on_overflow=False)
                     
+                    # Check BOTH final and partial results
                     if self.recognizer.AcceptWaveform(data):
                         result = json.loads(self.recognizer.Result())
-                        text = result.get('text', '').lower()
+                        text = result.get('text', '').lower().strip()
                         
                         if text:
-                            self.status_update.emit(f"Heard: {text}")
-                            
-                            # Check commands
-                            matched = False
-                            for cmd in ON_COMMANDS:
-                                if cmd in text:
-                                    self.command_received.emit('on')
-                                    matched = True
-                                    break
-                            
-                            if not matched:
-                                for cmd in OFF_COMMANDS:
-                                    if cmd in text:
-                                        self.command_received.emit('off')
-                                        break
-                            
-                            # Reset status after showing what was heard
-                            time.sleep(1.5)
-                            if self.running and self.enabled:
-                                self.status_update.emit("Listening...")
+                            self.process_command(text)
+                    else:
+                        # Also check partial results for instant response
+                        partial = json.loads(self.recognizer.PartialResult())
+                        text = partial.get('partial', '').lower().strip()
+                        
+                        if text:
+                            self.process_command(text)
                 
                 except Exception:
                     continue
@@ -216,6 +202,20 @@ class VoiceThread(QThread):
             
         except Exception as e:
             self.status_update.emit(f"Audio Error: {str(e)[:40]}")
+    
+    def process_command(self, text):
+        """Process command instantly when heard"""
+        # Check for ON commands
+        if any(word in text for word in ['on', 'active']):
+            self.command_received.emit('on')
+            self.status_update.emit(f"→ ON")
+            return
+        
+        # Check for OFF commands
+        if any(word in text for word in ['off', 'inactive']):
+            self.command_received.emit('off')
+            self.status_update.emit(f"→ OFF")
+            return
     
     def stop(self):
         self.running = False
@@ -360,11 +360,10 @@ class MacroThread(QThread):
 
 class SettingsDialog(QDialog):
     def __init__(self, parent, current_hotkey, current_aim,
-                 voice_enabled, current_mic, voice_status_text,
-                 energy_threshold=1500):
+                 voice_enabled, current_mic, voice_status_text):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedSize(400, 400)
+        self.setFixedSize(400, 360)
         self.parent_window = parent
         
         palette = QPalette()
@@ -440,9 +439,9 @@ class SettingsDialog(QDialog):
         mic_layout.addWidget(self.mic_combo)
         layout.addLayout(mic_layout)
         
-        # Note about first run
-        note = QLabel("Note: First run downloads ~50MB model")
-        note.setStyleSheet("color: #FF8800; font-size: 8pt;")
+        # Note
+        note = QLabel("Note: Grammar limited to 4 words")
+        note.setStyleSheet("color: #00FF00; font-size: 8pt;")
         layout.addWidget(note)
         
         # Voice status
@@ -452,8 +451,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.voice_status)
         
         # Commands hint
-        hint = QLabel('Say: "On" / "Active" / "Turn On"\n'
-                      '       "Off" / "Inactive" / "Turn Off"')
+        hint = QLabel('Say: "On" / "Active"\n'
+                      '       "Off" / "Inactive"')
         hint.setStyleSheet("color: #888888; font-size: 8pt;")
         layout.addWidget(hint)
         
@@ -492,7 +491,7 @@ class SettingsDialog(QDialog):
             self.voice_status.setStyleSheet("color: #00FF00; font-size: 8pt;")
         elif "Error" in status or "not" in status.lower() or "failed" in status.lower():
             self.voice_status.setStyleSheet("color: #FF0000; font-size: 8pt;")
-        elif "Heard" in status:
+        elif "→" in status:
             self.voice_status.setStyleSheet("color: #00BFFF; font-size: 8pt;")
         else:
             self.voice_status.setStyleSheet("color: #888888; font-size: 8pt;")
@@ -645,7 +644,7 @@ class MainWindow(QMainWindow):
         if "Listening" in status:
             self.voice_label.setText("🎤 Voice: Listening...")
             self.voice_label.setStyleSheet("color: #00FF00; font-size: 8pt;")
-        elif "Heard" in status:
+        elif "→" in status:
             self.voice_label.setText(f"🎤 {status}")
             self.voice_label.setStyleSheet("color: #00BFFF; font-size: 8pt;")
         elif "Error" in status or "not" in status.lower() or "failed" in status.lower():
@@ -715,7 +714,7 @@ class MainWindow(QMainWindow):
         
         layout = QVBoxLayout()
         layout.setSpacing(8)
-        layout.setContentsMargins(0, 5, 0, 0)
+        layout.setContentsMargins(10, 10, 10, 10)  # Left, Top, Right, Bottom margins
         
         # Title
         title_container = QHBoxLayout()
@@ -812,7 +811,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.minimize_check)
         
         # Voice status
-        self.voice_label = QLabel("🎤 Voice: Disabled (Vosk - Offline)")
+        self.voice_label = QLabel("🎤 Voice: Disabled (Vosk)")
         self.voice_label.setStyleSheet("color: #888888; font-size: 8pt;")
         layout.addWidget(self.voice_label)
         
