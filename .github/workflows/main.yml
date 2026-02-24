@@ -2,7 +2,7 @@ name: Build Windows EXE (Vosk)
 
 on:
   push:
-    branches: [ vosk-version ]
+    branches: [ Main ]
   workflow_dispatch:
 
 jobs:
