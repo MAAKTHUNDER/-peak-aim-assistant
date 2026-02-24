@@ -1,4 +1,4 @@
-name: Build Windows EXE (Vosk)
+name: Build Windows EXE (New UI)
 on:
   push:
     branches: [ Testing ]
