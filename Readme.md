@@ -9,8 +9,6 @@
 
 **Professional gaming assistant for mobile emulators with intelligent aim control and scope detection**
 
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Settings](#-settings) • [FAQ](#-faq)
-
 </div>
 
 ---
@@ -73,11 +71,9 @@ Peak & Aim Assistant is a lightweight, customizable macro tool designed to enhan
 
 ## 🚀 Installation
 
-### Option 1: Download Executable (Recommended)
+### Option 1: Download Pre-built Version
 
-1. Go to [Releases](../../releases)
-2. Download the latest `PeakAimAssistant.exe`
-3. Run the executable (no installation needed!)
+A pre-built version is available in the repository's Releases section.
 
 > **Note**: Windows Defender may show a warning. Click "More info" → "Run anyway"
 
@@ -108,7 +104,7 @@ python peak_aim_assistant.py
 ### Quick Start
 
 1. **Launch the application**
-   - Run `PeakAimAssistant.exe` or `python peak_aim_assistant.py`
+   - Run `PeakAimAssistant` or `python peak_aim_assistant.py`
 
 2. **Configure (Optional)**
    - Click **⚙ Settings** to customize hotkeys
@@ -199,22 +195,6 @@ Settings are automatically saved in `settings.json`:
 - Minimal CPU usage (~0.3-0.5%)
 - Low memory footprint (~50-80 MB)
 - No impact on game performance
-
----
-
-## 🛠️ Building from Source
-
-### Create Executable
-
-```bash
-# Install PyInstaller
-pip install pyinstaller
-
-# Build standalone executable
-pyinstaller --onefile --windowed --icon=icon.ico --add-data "logo.png;." --add-data "youtube.png;." --add-data "tiktok.png;." --add-data "icon.ico;." --name=PeakAimAssistant peak_aim_assistant.py
-
-# Executable will be in dist/ folder
-```
 
 ---
 
