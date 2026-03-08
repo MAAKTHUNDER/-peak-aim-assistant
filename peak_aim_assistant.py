@@ -126,8 +126,8 @@ class VoiceThread(QThread):
             self.recognizer = KaldiRecognizer(self.model, 16000)
             self.recognizer.SetWords(True)
             
-            # Grammar limited to 5 words
-            self.recognizer.SetGrammar('["on", "off", "active", "inactive", "turn"]')
+            # ✅ NO GRAMMAR - Let Vosk hear everything naturally
+            # ❌ REMOVED: self.recognizer.SetGrammar(...)
             
             return True
         except Exception as e:
@@ -176,13 +176,13 @@ class VoiceThread(QThread):
                     
                     data = stream.read(2000, exception_on_overflow=False)
                     
-                    # Only process FINAL results (not partial)
+                    # Only process FINAL results
                     if self.recognizer.AcceptWaveform(data):
                         result = json.loads(self.recognizer.Result())
                         
-                        # CHECK CONFIDENCE - STRICT 90%+ ONLY
+                        # Check for EXACT word matches with confidence
                         if 'result' in result and len(result['result']) > 0:
-                            self.process_with_confidence(result['result'])
+                            self.process_exact_words(result['result'])
                 
                 except Exception:
                     continue
@@ -194,54 +194,58 @@ class VoiceThread(QThread):
         except Exception as e:
             self.status_update.emit(f"Audio Error: {str(e)[:40]}")
     
-    def process_with_confidence(self, words):
-        """Process ONLY if confidence is 90%+ for command words"""
-        # Prevent rapid repeated commands (debounce)
-        if time.time() - self.last_command_time < 0.5:
+    def process_exact_words(self, words):
+        """Process ONLY exact command words with 90%+ confidence"""
+        
+        # Debounce - prevent rapid repeats
+        if time.time() - self.last_command_time < 1.0:
             return
         
-        # Check each word and its confidence
-        detected_words = {}
+        # Look for EXACT command words
+        found_words = {}
         for word_info in words:
-            word = word_info.get('word', '').lower()
+            word = word_info.get('word', '').lower().strip()
             confidence = word_info.get('conf', 0)
             
-            # STRICT: Only 90%+ confidence accepted
+            # Only accept 90%+ confidence
             if confidence >= 0.90:
-                detected_words[word] = confidence
+                # Store exact matches only
+                if word in ['on', 'off', 'active', 'inactive', 'turn']:
+                    found_words[word] = confidence
         
-        # Now check for commands with high confidence words only
+        # Check for two-word commands first
+        if 'turn' in found_words and 'off' in found_words:
+            avg_conf = (found_words['turn'] + found_words['off']) / 2
+            if avg_conf >= 0.90:
+                self.command_received.emit('off')
+                self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
+                self.last_command_time = time.time()
+                return
         
-        # Check TURN OFF (both words must be 90%+)
-        if 'turn' in detected_words and 'off' in detected_words:
-            avg_conf = (detected_words['turn'] + detected_words['off']) / 2
-            self.command_received.emit('off')
-            self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
-            self.last_command_time = time.time()
-            return
+        if 'turn' in found_words and 'on' in found_words:
+            avg_conf = (found_words['turn'] + found_words['on']) / 2
+            if avg_conf >= 0.90:
+                self.command_received.emit('on')
+                self.status_update.emit(f"→ ON ({int(avg_conf*100)}%)")
+                self.last_command_time = time.time()
+                return
         
-        # Check TURN ON (both words must be 90%+)
-        if 'turn' in detected_words and 'on' in detected_words:
-            avg_conf = (detected_words['turn'] + detected_words['on']) / 2
-            self.command_received.emit('on')
-            self.status_update.emit(f"→ ON ({int(avg_conf*100)}%)")
-            self.last_command_time = time.time()
-            return
+        # Check single-word commands
+        if 'off' in found_words or 'inactive' in found_words:
+            conf = found_words.get('off', found_words.get('inactive', 0))
+            if conf >= 0.90:
+                self.command_received.emit('off')
+                self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
+                self.last_command_time = time.time()
+                return
         
-        # Check single word commands (90%+ confidence)
-        if 'off' in detected_words or 'inactive' in detected_words:
-            conf = detected_words.get('off', detected_words.get('inactive', 0))
-            self.command_received.emit('off')
-            self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
-            self.last_command_time = time.time()
-            return
-        
-        if 'on' in detected_words or 'active' in detected_words:
-            conf = detected_words.get('on', detected_words.get('active', 0))
-            self.command_received.emit('on')
-            self.status_update.emit(f"→ ON ({int(conf*100)}%)")
-            self.last_command_time = time.time()
-            return
+        if 'on' in found_words or 'active' in found_words:
+            conf = found_words.get('on', found_words.get('active', 0))
+            if conf >= 0.90:
+                self.command_received.emit('on')
+                self.status_update.emit(f"→ ON ({int(conf*100)}%)")
+                self.last_command_time = time.time()
+                return
     
     def stop(self):
         self.running = False
@@ -466,7 +470,7 @@ class SettingsDialog(QDialog):
         layout.addLayout(mic_layout)
         
         # Note - Updated
-        note = QLabel("Note: 90%+ confidence required (Strict)")
+        note = QLabel("Note: Exact word matching (90%+ confidence)")
         note.setStyleSheet("color: #00FF00; font-size: 8pt;")
         layout.addWidget(note)
         
