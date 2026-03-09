@@ -126,9 +126,6 @@ class VoiceThread(QThread):
             self.recognizer = KaldiRecognizer(self.model, 16000)
             self.recognizer.SetWords(True)
             
-            # ✅ NO GRAMMAR - Let Vosk hear everything naturally
-            # ❌ REMOVED: self.recognizer.SetGrammar(...)
-            
             return True
         except Exception as e:
             self.status_update.emit(f"Init Error: {str(e)[:40]}")
@@ -176,11 +173,9 @@ class VoiceThread(QThread):
                     
                     data = stream.read(2000, exception_on_overflow=False)
                     
-                    # Only process FINAL results
                     if self.recognizer.AcceptWaveform(data):
                         result = json.loads(self.recognizer.Result())
                         
-                        # Check for EXACT word matches with confidence
                         if 'result' in result and len(result['result']) > 0:
                             self.process_exact_words(result['result'])
                 
@@ -195,58 +190,51 @@ class VoiceThread(QThread):
             self.status_update.emit(f"Audio Error: {str(e)[:40]}")
     
     def process_exact_words(self, words):
-    """Process ONLY exact command words with 90%+ confidence"""
-    
-    # Debounce - prevent rapid repeats
-    if time.time() - self.last_command_time < 1.0:
-        return
-    
-    # Look for EXACT command words
-    found_words = {}
-    for word_info in words:
-        word = word_info.get('word', '').lower().strip()
-        confidence = word_info.get('conf', 0)
+        """Process ONLY exact command words with 90%+ confidence"""
         
-        # Only accept 90%+ confidence
-        if confidence >= 0.90:
-            # Store exact matches - now includes "of" for "off"
-            if word in ['on', 'off', 'of', 'active', 'inactive', 'turn']:
-                found_words[word] = confidence
-    
-    # Check for two-word commands first
-    if 'turn' in found_words and ('off' in found_words or 'of' in found_words):
-        avg_conf = (found_words['turn'] + found_words.get('off', found_words.get('of', 0))) / 2
-        if avg_conf >= 0.90:
-            self.command_received.emit('off')
-            self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
-            self.last_command_time = time.time()
+        if time.time() - self.last_command_time < 1.0:
             return
-    
-    if 'turn' in found_words and 'on' in found_words:
-        avg_conf = (found_words['turn'] + found_words['on']) / 2
-        if avg_conf >= 0.90:
-            self.command_received.emit('on')
-            self.status_update.emit(f"→ ON ({int(avg_conf*100)}%)")
-            self.last_command_time = time.time()
-            return
-    
-    # Check single-word commands - OFF (accepts both "off" and "of")
-    if 'off' in found_words or 'of' in found_words or 'inactive' in found_words:
-        conf = found_words.get('off', found_words.get('of', found_words.get('inactive', 0)))
-        if conf >= 0.90:
-            self.command_received.emit('off')
-            self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
-            self.last_command_time = time.time()
-            return
-    
-    # Check single-word commands - ON
-    if 'on' in found_words or 'active' in found_words:
-        conf = found_words.get('on', found_words.get('active', 0))
-        if conf >= 0.90:
-            self.command_received.emit('on')
-            self.status_update.emit(f"→ ON ({int(conf*100)}%)")
-            self.last_command_time = time.time()
-            return
+        
+        found_words = {}
+        for word_info in words:
+            word = word_info.get('word', '').lower().strip()
+            confidence = word_info.get('conf', 0)
+            
+            if confidence >= 0.90:
+                if word in ['on', 'off', 'of', 'active', 'inactive', 'turn']:
+                    found_words[word] = confidence
+        
+        if 'turn' in found_words and ('off' in found_words or 'of' in found_words):
+            avg_conf = (found_words['turn'] + found_words.get('off', found_words.get('of', 0))) / 2
+            if avg_conf >= 0.90:
+                self.command_received.emit('off')
+                self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
+                self.last_command_time = time.time()
+                return
+        
+        if 'turn' in found_words and 'on' in found_words:
+            avg_conf = (found_words['turn'] + found_words['on']) / 2
+            if avg_conf >= 0.90:
+                self.command_received.emit('on')
+                self.status_update.emit(f"→ ON ({int(avg_conf*100)}%)")
+                self.last_command_time = time.time()
+                return
+        
+        if 'off' in found_words or 'of' in found_words or 'inactive' in found_words:
+            conf = found_words.get('off', found_words.get('of', found_words.get('inactive', 0)))
+            if conf >= 0.90:
+                self.command_received.emit('off')
+                self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
+                self.last_command_time = time.time()
+                return
+        
+        if 'on' in found_words or 'active' in found_words:
+            conf = found_words.get('on', found_words.get('active', 0))
+            if conf >= 0.90:
+                self.command_received.emit('on')
+                self.status_update.emit(f"→ ON ({int(conf*100)}%)")
+                self.last_command_time = time.time()
+                return
     
     def stop(self):
         self.running = False
@@ -414,7 +402,6 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Macro Hotkey
         hotkey_layout = QHBoxLayout()
         hotkey_label = QLabel("Macro Hotkey:")
         hotkey_label.setStyleSheet("color: #CCCCCC;")
@@ -427,7 +414,6 @@ class SettingsDialog(QDialog):
         hotkey_layout.addWidget(self.hotkey_combo)
         layout.addLayout(hotkey_layout)
         
-        # Aim Button
         aim_layout = QHBoxLayout()
         aim_label = QLabel("Aim Button:")
         aim_label.setStyleSheet("color: #CCCCCC;")
@@ -442,7 +428,6 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Voice Control
         voice_title = QLabel("🎤 Voice Control:")
         voice_title.setStyleSheet("color: white; font-weight: bold;")
         layout.addWidget(voice_title)
@@ -453,7 +438,6 @@ class SettingsDialog(QDialog):
         self.voice_check.stateChanged.connect(self.on_voice_toggled)
         layout.addWidget(self.voice_check)
         
-        # Microphone
         mic_layout = QHBoxLayout()
         mic_label = QLabel("Microphone:")
         mic_label.setStyleSheet("color: #CCCCCC;")
@@ -470,18 +454,15 @@ class SettingsDialog(QDialog):
         mic_layout.addWidget(self.mic_combo)
         layout.addLayout(mic_layout)
         
-        # Note - Updated
         note = QLabel("Note: Exact word matching (90%+ confidence)")
         note.setStyleSheet("color: #00FF00; font-size: 8pt;")
         layout.addWidget(note)
         
-        # Voice status
         self.voice_status = QLabel(f"🎤 {voice_status_text}")
         color = "#00FF00" if "Listening" in voice_status_text else "#888888"
         self.voice_status.setStyleSheet(f"color: {color}; font-size: 8pt;")
         layout.addWidget(self.voice_status)
         
-        # Commands hint
         hint = QLabel('Say clearly: "On" / "Off" / "Active" / "Inactive"\n'
                       '                     "Turn On" / "Turn Off"')
         hint.setStyleSheet("color: #888888; font-size: 8pt;")
@@ -770,7 +751,6 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
         layout.setContentsMargins(10, 10, 10, 10)
         
-        # Title
         title_container = QHBoxLayout()
         title_container.addStretch()
         logo_path = resource_path("logo.png")
@@ -797,7 +777,6 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Status
         status_layout = QHBoxLayout()
         self.status_dot = QLabel("●")
         self.status_dot.setFont(QFont("Segoe UI", 14))
@@ -813,7 +792,6 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Buttons
         self.toggle_btn = QPushButton(f"Toggle Macro ({self.macro_hotkey})")
         self.toggle_btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
         self.toggle_btn.setFixedHeight(40)
@@ -850,7 +828,6 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Overlay position
         pos_label = QLabel("Overlay Position:")
         pos_label.setStyleSheet("color: #AAAAAA;")
         layout.addWidget(pos_label)
@@ -895,7 +872,6 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # How it Works
         how_label = QLabel("How it Works:")
         how_label.setStyleSheet("color: white; font-weight: bold;")
         layout.addWidget(how_label)
@@ -904,13 +880,14 @@ class MainWindow(QMainWindow):
         hotkey_text.setStyleSheet("color: #CCCCCC;")
         layout.addWidget(hotkey_text)
         
+        layout.addWidget(QLabel(""))
+        
         peak_text = QLabel("Q/E - Peak with Auto-Aim")
         peak_text.setStyleSheet("color: #CCCCCC;")
         layout.addWidget(peak_text)
         
         layout.addWidget(QLabel("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", self))
         
-        # Social links
         youtube_layout = QHBoxLayout()
         youtube_layout.setSpacing(10)
         yt_icon_path = resource_path("youtube.png")
