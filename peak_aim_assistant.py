@@ -200,13 +200,16 @@ class VoiceThread(QThread):
             word = word_info.get('word', '').lower().strip()
             confidence = word_info.get('conf', 0)
             
-            if confidence >= 0.90:
-                if word in ['on', 'off', 'of', 'active', 'inactive', 'turn']:
-                    found_words[word] = confidence
+            if word in ['on', 'active', 'turn']:
+                 if confidence >= 0.90:  # Strict for "on"
+                      found_words[word] = confidence
+            elif word in ['off', 'of', 'inactive']:
+                if confidence >= 0.85:  # Easier for "off"
+                     found_words[word] = confidence
         
         if 'turn' in found_words and ('off' in found_words or 'of' in found_words):
             avg_conf = (found_words['turn'] + found_words.get('off', found_words.get('of', 0))) / 2
-            if avg_conf >= 0.90:
+            if avg_conf >= 0.85:
                 self.command_received.emit('off')
                 self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
                 self.last_command_time = time.time()
@@ -222,7 +225,7 @@ class VoiceThread(QThread):
         
         if 'off' in found_words or 'of' in found_words or 'inactive' in found_words:
             conf = found_words.get('off', found_words.get('of', found_words.get('inactive', 0)))
-            if conf >= 0.90:
+            if conf >= 0.85:
                 self.command_received.emit('off')
                 self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
                 self.last_command_time = time.time()
