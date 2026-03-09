@@ -195,57 +195,58 @@ class VoiceThread(QThread):
             self.status_update.emit(f"Audio Error: {str(e)[:40]}")
     
     def process_exact_words(self, words):
-        """Process ONLY exact command words with 90%+ confidence"""
+    """Process ONLY exact command words with 90%+ confidence"""
+    
+    # Debounce - prevent rapid repeats
+    if time.time() - self.last_command_time < 1.0:
+        return
+    
+    # Look for EXACT command words
+    found_words = {}
+    for word_info in words:
+        word = word_info.get('word', '').lower().strip()
+        confidence = word_info.get('conf', 0)
         
-        # Debounce - prevent rapid repeats
-        if time.time() - self.last_command_time < 1.0:
+        # Only accept 90%+ confidence
+        if confidence >= 0.90:
+            # Store exact matches - now includes "of" for "off"
+            if word in ['on', 'off', 'of', 'active', 'inactive', 'turn']:
+                found_words[word] = confidence
+    
+    # Check for two-word commands first
+    if 'turn' in found_words and ('off' in found_words or 'of' in found_words):
+        avg_conf = (found_words['turn'] + found_words.get('off', found_words.get('of', 0))) / 2
+        if avg_conf >= 0.90:
+            self.command_received.emit('off')
+            self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
+            self.last_command_time = time.time()
             return
-        
-        # Look for EXACT command words
-        found_words = {}
-        for word_info in words:
-            word = word_info.get('word', '').lower().strip()
-            confidence = word_info.get('conf', 0)
-            
-            # Only accept 90%+ confidence
-            if confidence >= 0.90:
-                # Store exact matches only
-                if word in ['on', 'off', 'active', 'inactive', 'turn']:
-                    found_words[word] = confidence
-        
-        # Check for two-word commands first
-        if 'turn' in found_words and 'off' in found_words:
-            avg_conf = (found_words['turn'] + found_words['off']) / 2
-            if avg_conf >= 0.90:
-                self.command_received.emit('off')
-                self.status_update.emit(f"→ OFF ({int(avg_conf*100)}%)")
-                self.last_command_time = time.time()
-                return
-        
-        if 'turn' in found_words and 'on' in found_words:
-            avg_conf = (found_words['turn'] + found_words['on']) / 2
-            if avg_conf >= 0.90:
-                self.command_received.emit('on')
-                self.status_update.emit(f"→ ON ({int(avg_conf*100)}%)")
-                self.last_command_time = time.time()
-                return
-        
-        # Check single-word commands
-        if 'off' in found_words or 'inactive' in found_words:
-            conf = found_words.get('off', found_words.get('inactive', 0))
-            if conf >= 0.90:
-                self.command_received.emit('off')
-                self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
-                self.last_command_time = time.time()
-                return
-        
-        if 'on' in found_words or 'active' in found_words:
-            conf = found_words.get('on', found_words.get('active', 0))
-            if conf >= 0.90:
-                self.command_received.emit('on')
-                self.status_update.emit(f"→ ON ({int(conf*100)}%)")
-                self.last_command_time = time.time()
-                return
+    
+    if 'turn' in found_words and 'on' in found_words:
+        avg_conf = (found_words['turn'] + found_words['on']) / 2
+        if avg_conf >= 0.90:
+            self.command_received.emit('on')
+            self.status_update.emit(f"→ ON ({int(avg_conf*100)}%)")
+            self.last_command_time = time.time()
+            return
+    
+    # Check single-word commands - OFF (accepts both "off" and "of")
+    if 'off' in found_words or 'of' in found_words or 'inactive' in found_words:
+        conf = found_words.get('off', found_words.get('of', found_words.get('inactive', 0)))
+        if conf >= 0.90:
+            self.command_received.emit('off')
+            self.status_update.emit(f"→ OFF ({int(conf*100)}%)")
+            self.last_command_time = time.time()
+            return
+    
+    # Check single-word commands - ON
+    if 'on' in found_words or 'active' in found_words:
+        conf = found_words.get('on', found_words.get('active', 0))
+        if conf >= 0.90:
+            self.command_received.emit('on')
+            self.status_update.emit(f"→ ON ({int(conf*100)}%)")
+            self.last_command_time = time.time()
+            return
     
     def stop(self):
         self.running = False
